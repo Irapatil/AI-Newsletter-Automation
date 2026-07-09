@@ -61,9 +61,14 @@ def build_workflow() -> CompiledStateGraph:
 
     graph.add_node("orchestrator", orchestrator_node)
 
+    # No graph-level RetryPolicy on collector nodes: BaseCollectorAgent.collect()
+    # already isolates every failure into a CollectorResult (it never raises),
+    # and each underlying HTTP call already retries transient errors via
+    # app.utils.retry.with_retry. A node-level RetryPolicy here would never
+    # fire, since there's nothing left for it to catch.
     for agent in _COLLECTOR_AGENTS:
         node_name = f"{agent.state_key}_collector"
-        graph.add_node(node_name, make_collector_node(agent), retry=_NETWORK_RETRY)
+        graph.add_node(node_name, make_collector_node(agent))
         graph.add_edge("orchestrator", node_name)
         graph.add_edge(node_name, "aggregator")
 

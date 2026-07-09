@@ -37,7 +37,7 @@ def make_collector_node(agent: BaseCollectorAgent) -> NodeFn:
             "errors": result.errors,
         }
 
-    _node.__name__ = f"{agent.state_key}_node"
+    _node.__name__ = f"{agent.state_key}_collector"
     return _node
 
 

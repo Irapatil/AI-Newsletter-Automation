@@ -22,8 +22,13 @@ built exactly for that:
   so no coordination code is needed to avoid write conflicts.
 - **Parallel execution** - the orchestrator has an edge to all eight
   collector nodes; LangGraph runs them concurrently in the same superstep.
-- **Retry support** - `RetryPolicy` is attached to every node that performs
-  network or LLM calls (`app/graph/workflow.py`), with exponential backoff.
+- **Retry support** - every outbound HTTP call already retries transient
+  5xx/network failures with exponential backoff (`app/utils/retry.py`), and
+  `BaseCollectorAgent.collect()` isolates any remaining per-source failure
+  without aborting the graph. A graph-level `RetryPolicy` (`app/graph/workflow.py`)
+  is additionally attached to `deduplication` and `newsletter_generator`,
+  which call out to the LLM directly and don't self-isolate the way collector
+  nodes do.
 - **Conditional routing** - after ranking, `route_after_ranking` sends the
   graph either to `newsletter_generator` (normal path) or
   `no_content_fallback` (nothing cleared the relevance bar).

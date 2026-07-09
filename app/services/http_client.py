@@ -35,7 +35,7 @@ async def fetch_text(url: str, params: dict | None = None, headers: dict | None 
 
     try:
         return await _do_fetch()
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ConnectionError, TimeoutError) as exc:
         logger.warning("http_fetch_failed", url=url, error=str(exc))
         raise HttpClientError(f"Failed to fetch {url}: {exc}") from exc
 
@@ -57,6 +57,31 @@ async def fetch_json(
 
     try:
         return await _do_fetch()
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ConnectionError, TimeoutError) as exc:
         logger.warning("http_fetch_json_failed", url=url, error=str(exc))
         raise HttpClientError(f"Failed to fetch {url}: {exc}") from exc
+
+
+async def post_json(
+    url: str,
+    json_body: dict | list,
+    params: dict | None = None,
+    headers: dict | None = None,
+) -> dict | list:
+    """POST a JSON body to a URL and return the parsed JSON response body."""
+    settings = get_settings()
+
+    @with_retry(max_attempts=settings.http_max_retries)
+    async def _do_post() -> dict | list:
+        async with httpx.AsyncClient(
+            timeout=settings.http_timeout_seconds, follow_redirects=True
+        ) as client:
+            response = await client.post(url, params=params, headers=headers, json=json_body)
+            response.raise_for_status()
+            return response.json()
+
+    try:
+        return await _do_post()
+    except (httpx.HTTPError, ConnectionError, TimeoutError) as exc:
+        logger.warning("http_post_json_failed", url=url, error=str(exc))
+        raise HttpClientError(f"Failed to POST {url}: {exc}") from exc
