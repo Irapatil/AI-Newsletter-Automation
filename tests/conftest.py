@@ -6,14 +6,22 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.config.settings import get_settings
+from app.config.settings import Settings, get_settings
 from app.models.article import Article, NewsCategory
 from app.services.llm_service import MockLLMService
 
 
 @pytest.fixture(autouse=True)
-def _reset_settings_cache():
-    """Ensure `get_settings()` reflects env vars set/unset within a test."""
+def _reset_settings_cache(monkeypatch: pytest.MonkeyPatch):
+    """Ensure `get_settings()` reflects env vars set/unset within a test.
+
+    Also disables loading a real `.env` file for the duration of the test
+    suite: `Settings` reads `env_file=".env"` on construction regardless of
+    `monkeypatch.setenv`/`delenv`, so a developer's real `.env` (with real
+    API keys) would otherwise leak into tests that expect a key to be unset,
+    making the suite depend on local machine state instead of being hermetic.
+    """
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
