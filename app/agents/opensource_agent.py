@@ -6,9 +6,12 @@ import asyncio
 from datetime import UTC, datetime
 
 from app.agents.base_agent import BaseCollectorAgent
+from app.config.logging_config import get_logger
 from app.models.article import Article, NewsCategory
-from app.services.github_service import fetch_trending_ai_repos
-from app.services.huggingface_service import fetch_trending_models
+from app.services.github_service import GithubRepo, fetch_trending_ai_repos
+from app.services.huggingface_service import HuggingFaceModel, fetch_trending_models
+
+logger = get_logger(__name__)
 
 
 class OpenSourceAgent(BaseCollectorAgent):
@@ -17,10 +20,13 @@ class OpenSourceAgent(BaseCollectorAgent):
     display_name = "OpenSourceAgent"
 
     async def fetch(self) -> list[Article]:
-        repos, models = await asyncio.gather(
+        repos_result, models_result = await asyncio.gather(
             fetch_trending_ai_repos(max_results=15),
             fetch_trending_models(max_results=15),
+            return_exceptions=True,
         )
+        repos = self._unwrap(repos_result, "github")
+        models = self._unwrap(models_result, "huggingface")
 
         articles: list[Article] = [
             Article(
@@ -50,3 +56,13 @@ class OpenSourceAgent(BaseCollectorAgent):
             if model["url"]
         ]
         return articles
+
+    def _unwrap(
+        self, result: list[GithubRepo] | list[HuggingFaceModel] | BaseException, source: str
+    ) -> list:
+        if isinstance(result, BaseException):
+            logger.warning(
+                "agent_source_failed", agent=self.display_name, source=source, error=str(result)
+            )
+            return []
+        return result

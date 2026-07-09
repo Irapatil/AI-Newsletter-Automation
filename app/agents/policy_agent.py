@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-
-from app.agents.base_agent import BaseCollectorAgent
+from app.agents.base_agent import BaseCollectorAgent, gather_isolated
 from app.config.settings import get_settings
 from app.config.sources import POLICY_QUERIES, google_news_query_url
 from app.models.article import Article, NewsCategory
@@ -22,8 +20,10 @@ class PolicyAgent(BaseCollectorAgent):
             topic: google_news_query_url(query, when="7d")
             for topic, query in POLICY_QUERIES.items()
         }
-        results = await asyncio.gather(
-            *[fetch_feed_entries(url, topic) for topic, url in urls.items()]
+        results = await gather_isolated(
+            (fetch_feed_entries(url, topic) for topic, url in urls.items()),
+            agent_name=self.display_name,
+            labels=urls.keys(),
         )
 
         articles: list[Article] = []
@@ -45,8 +45,14 @@ class PolicyAgent(BaseCollectorAgent):
                 )
 
         if get_settings().newsapi_api_key:
-            for topic, query in POLICY_QUERIES.items():
-                supplemental = await fetch_everything(query)
+            supplemental_results = await gather_isolated(
+                (fetch_everything(query) for query in POLICY_QUERIES.values()),
+                agent_name=self.display_name,
+                labels=[f"{topic} (NewsAPI)" for topic in POLICY_QUERIES],
+            )
+            for topic, supplemental in zip(
+                POLICY_QUERIES.keys(), supplemental_results, strict=True
+            ):
                 for entry in supplemental:
                     if not entry["url"]:
                         continue

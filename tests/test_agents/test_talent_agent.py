@@ -273,23 +273,20 @@ async def test_fetch_source_returning_empty_list_does_not_block_other_sources(
 
 
 @pytest.mark.asyncio
-async def test_fetch_has_no_per_source_exception_isolation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Documents observed (not necessarily desired) behavior: unlike
-    job_boards_service's internal try/except around HTTP errors,
-    TalentAgent.fetch() itself wraps the three source calls in plain
-    asyncio.gather() without return_exceptions=True and with no per-source
-    try/except. If one dependency raises instead of degrading to [],
-    the exception propagates out of fetch() and Lever/LinkedIn postings
-    that were otherwise available are lost too - collect() then reports
-    zero articles for the whole agent rather than a partial result.
+async def test_fetch_isolates_a_raising_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A source that raises (rather than degrading to []) doesn't drop the
+    other sources' postings: TalentAgent.fetch() isolates each of Greenhouse,
+    Lever, and LinkedIn from one another via `gather_isolated`/isinstance
+    checks around a single `asyncio.gather(..., return_exceptions=True)`.
     """
     monkeypatch.setenv("GREENHOUSE_BOARD_TOKENS", "acme")
     monkeypatch.setenv("LEVER_COMPANY_SLUGS", "beta")
 
     lever_posting = _make_posting(
-        title="AI Research Scientist", url="https://jobs.lever.co/beta/1", company="beta"
+        title="AI Research Scientist",
+        url="https://jobs.lever.co/beta/1",
+        company="beta",
+        published_at=datetime.now(UTC),
     )
 
     async def raising_fetch_greenhouse_jobs(board_token: str) -> list[JobPosting]:
@@ -307,12 +304,13 @@ async def test_fetch_has_no_per_source_exception_isolation(
         lambda: _StubLinkedInProvider([]),
     )
 
-    with pytest.raises(RuntimeError, match="simulated unexpected greenhouse failure"):
-        await TalentAgent().fetch()
+    articles = await TalentAgent().fetch()
 
-    # Through the public collect() contract, the whole agent's result is
-    # dropped - not just the failing source's postings.
+    assert len(articles) == 1
+    assert articles[0].title == "AI Research Scientist at beta"
+
+    # The failure is isolated per-source, not per-agent: collect() should
+    # still report the Lever posting, not zero articles.
     result = await TalentAgent().collect()
-    assert result.articles == []
-    assert len(result.errors) == 1
-    assert "simulated unexpected greenhouse failure" in result.errors[0]
+    assert len(result.articles) == 1
+    assert result.errors == []

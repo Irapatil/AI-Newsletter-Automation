@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-
-from app.agents.base_agent import BaseCollectorAgent
+from app.agents.base_agent import BaseCollectorAgent, gather_isolated
 from app.config.sources import COMPANY_NEWS_QUERIES, google_news_query_url
 from app.models.article import Article, NewsCategory
 from app.services.rss_service import fetch_feed_entries
@@ -19,8 +17,10 @@ class CompanyNewsAgent(BaseCollectorAgent):
         urls = {
             company: google_news_query_url(query) for company, query in COMPANY_NEWS_QUERIES.items()
         }
-        results = await asyncio.gather(
-            *[fetch_feed_entries(url, company) for company, url in urls.items()]
+        results = await gather_isolated(
+            (fetch_feed_entries(url, company) for company, url in urls.items()),
+            agent_name=self.display_name,
+            labels=urls.keys(),
         )
 
         articles: list[Article] = []

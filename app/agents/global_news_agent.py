@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-
-from app.agents.base_agent import BaseCollectorAgent
+from app.agents.base_agent import BaseCollectorAgent, gather_isolated
 from app.config.settings import get_settings
 from app.config.sources import GLOBAL_NEWS_RSS_FEEDS
 from app.models.article import Article, NewsCategory
@@ -18,8 +16,10 @@ class GlobalNewsAgent(BaseCollectorAgent):
     display_name = "GlobalNewsAgent"
 
     async def fetch(self) -> list[Article]:
-        feed_results = await asyncio.gather(
-            *[fetch_feed_entries(url, source) for source, url in GLOBAL_NEWS_RSS_FEEDS.items()]
+        feed_results = await gather_isolated(
+            (fetch_feed_entries(url, source) for source, url in GLOBAL_NEWS_RSS_FEEDS.items()),
+            agent_name=self.display_name,
+            labels=GLOBAL_NEWS_RSS_FEEDS.keys(),
         )
 
         articles: list[Article] = []
