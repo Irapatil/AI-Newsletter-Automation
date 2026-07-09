@@ -116,6 +116,49 @@ async def test_run_empty_article_list_returns_fallback_content():
     assert content.generated_at is not None
 
 
+def test_apply_global_cap_reserves_one_article_per_category_before_trimming(
+    article_factory, now, monkeypatch: pytest.MonkeyPatch
+):
+    """Regression test for a real bug: when candidates exceed the global cap,
+    every present category must keep at least one article - a category-blind
+    score cutoff previously could (and once did, due to a since-fixed
+    Article.id bug) erase whole sections despite RankingAgent having
+    deliberately kept them alive.
+    """
+    monkeypatch.setenv("NEWSLETTER_MAX_TOTAL_ARTICLES", "10")
+
+    articles = []
+    for category in NewsCategory:
+        for i in range(5):
+            # TALENT's articles all score lower than every other category's,
+            # so a pure top-10-by-score cutoff would drop TALENT entirely.
+            base_score = 0.1 if category == NewsCategory.TALENT else 0.5
+            articles.append(
+                _scored(
+                    article_factory(
+                        title=f"{category.value} story {i}",
+                        url=f"https://example.com/{category.value}/{i}",
+                        category=category,
+                        published_at=now,
+                    ),
+                    base_score - i * 0.01,
+                )
+            )
+
+    capped = NewsletterGeneratorAgent._apply_global_cap(articles)
+
+    assert len(capped) == 10
+    assert len({a.id for a in capped}) == 10, "capped articles must have unique ids"
+    present_categories = {a.category for a in capped}
+    assert present_categories == set(NewsCategory), "every category must be represented"
+
+
+def test_apply_global_cap_no_trim_needed_returns_all(article_factory, now):
+    articles = [_scored(article_factory(title="Only story", url="https://example.com/1"), 0.5)]
+    capped = NewsletterGeneratorAgent._apply_global_cap(articles)
+    assert capped == articles
+
+
 @pytest.mark.asyncio
 async def test_constructor_defaults_to_get_llm_service(monkeypatch):
     """When no llm_service is passed, the agent falls back to get_llm_service()."""
