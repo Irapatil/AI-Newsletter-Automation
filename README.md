@@ -204,7 +204,7 @@ step and screenshot placeholders for each action:
 ## Testing & Code Quality
 
 ```bash
-make test        # pytest, 130 tests (including an end-to-end LangGraph run), all external calls mocked (respx / MockLLMService)
+make test        # pytest, 138 tests (including an end-to-end LangGraph run), all external calls mocked (respx / MockLLMService)
 make lint         # ruff + isort --check + black --check
 make format       # ruff --fix + isort + black
 make typecheck    # mypy
