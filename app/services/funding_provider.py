@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TypedDict
+
+from dateutil import parser as date_parser
 
 from app.config.logging_config import get_logger
 from app.config.settings import get_settings
 from app.config.sources import FUNDING_FALLBACK_QUERY, google_news_query_url
-from app.services.http_client import HttpClientError, fetch_json
+from app.services.http_client import HttpClientError, post_json
 from app.services.rss_service import fetch_feed_entries
 
 logger = get_logger(__name__)
@@ -31,8 +33,17 @@ class FundingRound(TypedDict):
     url: str
     company: str
     amount_usd: float | None
-    published_at: datetime | str
+    published_at: datetime
     snippet: str
+
+
+def _parse_announced_on(value: str | None) -> datetime:
+    if not value:
+        return datetime.now(UTC)
+    try:
+        return date_parser.parse(value)
+    except (ValueError, TypeError):
+        return datetime.now(UTC)
 
 
 def _extract_amount_usd(title: str) -> float | None:
@@ -48,28 +59,34 @@ def _extract_amount_usd(title: str) -> float | None:
 class FundingProvider(ABC):
     """Abstract provider for AI startup funding news."""
 
+    display_name: str
+
     @abstractmethod
     async def fetch_recent_funding_rounds(self, max_results: int = 15) -> list[FundingRound]:
         raise NotImplementedError
 
 
 class CrunchbaseFundingProvider(FundingProvider):
-    """Real Crunchbase API v4 integration; requires `CRUNCHBASE_API_KEY`."""
+    """Real Crunchbase API v4 integration; requires `CRUNCHBASE_API_KEY`.
+
+    Crunchbase's `/searches/funding_rounds` endpoint is a POST with a JSON
+    body (not a GET with query params) - see Crunchbase API v4 docs.
+    """
+
+    display_name = "Crunchbase"
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
 
     async def fetch_recent_funding_rounds(self, max_results: int = 15) -> list[FundingRound]:
         headers = {"X-cb-user-key": self._api_key, "Content-Type": "application/json"}
-        params = {
-            "field_ids": "identifier,announced_on,money_raised,investor_identifiers",
+        body = {
+            "field_ids": ["identifier", "announced_on", "money_raised", "investor_identifiers"],
             "order": [{"field_id": "announced_on", "sort": "desc"}],
             "limit": max_results,
         }
         try:
-            payload = await fetch_json(
-                CRUNCHBASE_FUNDING_ROUNDS_URL, params=params, headers=headers
-            )
+            payload = await post_json(CRUNCHBASE_FUNDING_ROUNDS_URL, body, headers=headers)
         except HttpClientError as exc:
             logger.warning("crunchbase_fetch_failed", error=str(exc))
             return []
@@ -80,14 +97,15 @@ class CrunchbaseFundingProvider(FundingProvider):
             properties = entity.get("properties", {})
             identifier = properties.get("identifier", {})
             money = properties.get("money_raised", {})
+            announced_on = properties.get("announced_on")
             rounds.append(
                 FundingRound(
                     title=f"{identifier.get('value', 'Unknown company')} raises funding",
                     url=identifier.get("permalink", ""),
                     company=identifier.get("value", "Unknown"),
                     amount_usd=money.get("value_usd"),
-                    published_at=properties.get("announced_on"),
-                    snippet=f"Funding round announced {properties.get('announced_on', '')}.",
+                    published_at=_parse_announced_on(announced_on),
+                    snippet=f"Funding round announced {announced_on or 'recently'}.",
                 )
             )
         return rounds[:max_results]
@@ -95,6 +113,8 @@ class CrunchbaseFundingProvider(FundingProvider):
 
 class GoogleNewsFundingProvider(FundingProvider):
     """Free fallback: parses AI-funding headlines from Google News RSS."""
+
+    display_name = "Google News (Funding)"
 
     async def fetch_recent_funding_rounds(self, max_results: int = 15) -> list[FundingRound]:
         url = google_news_query_url(FUNDING_FALLBACK_QUERY)

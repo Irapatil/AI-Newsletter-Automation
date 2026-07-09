@@ -37,7 +37,7 @@ class FundingAgent(BaseCollectorAgent):
                 Article(
                     title=round_["title"],
                     url=round_["url"],
-                    source=type(provider).__name__,
+                    source=provider.display_name,
                     category=self.category,
                     published_at=_coerce_datetime(round_["published_at"]),
                     snippet=round_["snippet"],

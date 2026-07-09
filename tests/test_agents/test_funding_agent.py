@@ -14,6 +14,8 @@ from app.services.funding_provider import FundingProvider, FundingRound
 class _StubFundingProvider(FundingProvider):
     """Fake provider returning a fixed list of FundingRound dicts."""
 
+    display_name = "Stub"
+
     def __init__(self, rounds: list[FundingRound]) -> None:
         self._rounds = rounds
 
@@ -59,7 +61,7 @@ async def test_fetch_maps_funding_rounds_to_articles(monkeypatch: pytest.MonkeyP
     assert first.title == "Acme AI raises $50 million in Series B"
     assert first.url == "https://example.com/funding/acme"
     assert first.category == NewsCategory.FUNDING
-    assert first.source == "_StubFundingProvider"
+    assert first.source == "Stub"
     assert first.metadata == {"company": "Acme AI", "amount_usd": 50_000_000.0}
     assert isinstance(first.published_at, datetime)
     assert first.published_at == datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
