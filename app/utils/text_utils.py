@@ -15,6 +15,8 @@ def strip_html(raw_html: str) -> str:
     """Remove HTML markup, returning clean plain text."""
     if not raw_html:
         return ""
+    if "<" not in raw_html:
+        return _WHITESPACE_RE.sub(" ", raw_html).strip()
     text = BeautifulSoup(raw_html, "html.parser").get_text(separator=" ")
     return _WHITESPACE_RE.sub(" ", text).strip()
 

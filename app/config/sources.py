@@ -26,8 +26,8 @@ def google_news_query_url(query: str, when: str = "2d") -> str:
 GLOBAL_NEWS_RSS_FEEDS: dict[str, str] = {
     "TechCrunch AI": "https://techcrunch.com/category/artificial-intelligence/feed/",
     "VentureBeat AI": "https://venturebeat.com/category/ai/feed/",
-    "The Verge AI": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
     "MIT Technology Review": "https://www.technologyreview.com/feed/",
+    "The Verge AI": google_news_query_url("site:theverge.com artificial intelligence"),
     "Reuters AI": google_news_query_url("Reuters artificial intelligence"),
 }
 

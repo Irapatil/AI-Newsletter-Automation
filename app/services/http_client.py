@@ -26,7 +26,9 @@ async def fetch_text(url: str, params: dict | None = None, headers: dict | None 
 
     @with_retry(max_attempts=settings.http_max_retries)
     async def _do_fetch() -> str:
-        async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.http_timeout_seconds, follow_redirects=True
+        ) as client:
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
             return response.text
@@ -46,7 +48,9 @@ async def fetch_json(
 
     @with_retry(max_attempts=settings.http_max_retries)
     async def _do_fetch() -> dict | list:
-        async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.http_timeout_seconds, follow_redirects=True
+        ) as client:
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
             return response.json()
