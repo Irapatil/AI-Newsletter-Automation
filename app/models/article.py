@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class NewsCategory(str, Enum):
@@ -60,13 +60,18 @@ class Article(BaseModel):
     scores: ArticleScores = Field(default_factory=ArticleScores)
     ai_summary: str | None = None
 
-    @field_validator("id", mode="before")
-    @classmethod
-    def _default_id(cls, value: str, info: Any) -> str:
-        if value:
-            return value
-        data = info.data
-        return make_article_id(data.get("url", ""), data.get("title", ""))
+    @model_validator(mode="after")
+    def _default_id(self) -> Article:
+        # A `field_validator(mode="before")` on `id` itself would never fire
+        # when `id` is left at its default (Pydantic v2 skips before-validators
+        # for unset fields unless `validate_default=True`), and even with that
+        # set, `id`'s position before `url`/`title` in the field order would
+        # mean those fields weren't validated yet when it ran. An `after`
+        # model validator runs once every field is populated, regardless of
+        # declaration order.
+        if not self.id:
+            self.id = make_article_id(self.url, self.title)
+        return self
 
     def text_for_embedding(self) -> str:
         """Text representation used to compute semantic-deduplication embeddings."""
