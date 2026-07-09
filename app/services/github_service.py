@@ -35,7 +35,7 @@ async def fetch_trending_ai_repos(max_results: int = 15, days: int = 7) -> list[
     settings = get_settings()
     headers = {"Accept": "application/vnd.github+json"}
     if settings.github_token:
-        headers["Authorization"] = f"Bearer {settings.github_token}"
+        headers["Authorization"] = f"Bearer {settings.github_token.get_secret_value()}"
 
     params = {
         "q": _build_query(days),

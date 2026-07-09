@@ -24,7 +24,7 @@ async def fetch_everything(query: str, max_results: int = 20) -> list[FeedEntry]
         "sortBy": "publishedAt",
         "pageSize": str(max_results),
         "language": "en",
-        "apiKey": settings.newsapi_api_key,
+        "apiKey": settings.newsapi_api_key.get_secret_value(),
     }
 
     try:

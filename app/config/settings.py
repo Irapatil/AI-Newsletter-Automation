@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,26 +28,26 @@ class Settings(BaseSettings):
     # LLM provider
     llm_provider: Literal["openai", "azure_openai", "mock"] = "openai"
 
-    openai_api_key: str = ""
+    openai_api_key: SecretStr = SecretStr("")
     openai_model: str = "gpt-4o"
     openai_embedding_model: str = "text-embedding-3-small"
 
-    azure_openai_api_key: str = ""
+    azure_openai_api_key: SecretStr = SecretStr("")
     azure_openai_endpoint: str = ""
     azure_openai_api_version: str = "2024-08-01-preview"
     azure_openai_chat_deployment: str = ""
     azure_openai_embedding_deployment: str = ""
 
     # News source providers
-    newsapi_api_key: str = ""
-    github_token: str = ""
-    crunchbase_api_key: str = ""
+    newsapi_api_key: SecretStr = SecretStr("")
+    github_token: SecretStr = SecretStr("")
+    crunchbase_api_key: SecretStr = SecretStr("")
 
     greenhouse_board_tokens: str = "stripe,airbnb,openai"
     lever_company_slugs: str = "netflix,palantir"
 
     linkedin_jobs_provider: Literal["mock", "api"] = "mock"
-    linkedin_api_key: str = ""
+    linkedin_api_key: SecretStr = SecretStr("")
 
     # Deduplication & ranking
     dedup_similarity_threshold: float = 0.88

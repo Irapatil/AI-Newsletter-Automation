@@ -71,8 +71,8 @@ async def generate_newsletter(
     newsletter_id = uuid.uuid4().hex[:12]
 
     response = NewsletterResponse(
-        subject=final_state.get("newsletter_content").subject if content else "AI Newsletter",
-        summary=final_state.get("newsletter_content").executive_summary if content else "",
+        subject=content.subject if content else "AI Newsletter",
+        summary=content.executive_summary if content else "",
         html=final_state.get("newsletter_html", ""),
         markdown=final_state.get("newsletter_markdown", ""),
         json=final_state.get("newsletter_json", {}),

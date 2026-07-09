@@ -39,7 +39,7 @@ class DeduplicationAgent:
         kept: list[Article] = []
         duplicate_count = 0
         for article in ordered:
-            if article.embedding and self._is_duplicate(article, kept):
+            if article.embedding and self._is_duplicate(article.embedding, kept):
                 duplicate_count += 1
                 continue
             kept.append(article)
@@ -53,9 +53,9 @@ class DeduplicationAgent:
         )
         return kept
 
-    def _is_duplicate(self, article: Article, kept: list[Article]) -> bool:
+    def _is_duplicate(self, embedding: list[float], kept: list[Article]) -> bool:
         return any(
-            cosine_similarity(article.embedding, other.embedding) >= self._threshold
+            cosine_similarity(embedding, other.embedding) >= self._threshold
             for other in kept
             if other.embedding
         )

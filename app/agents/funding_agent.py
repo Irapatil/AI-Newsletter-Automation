@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
+from dateutil import parser as date_parser
+
 from app.agents.base_agent import BaseCollectorAgent
 from app.models.article import Article, NewsCategory
 from app.services.funding_provider import get_funding_provider
+
+
+def _coerce_datetime(value: datetime | str) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    try:
+        return date_parser.parse(value)
+    except (ValueError, TypeError):
+        return datetime.now(UTC)
 
 
 class FundingAgent(BaseCollectorAgent):
@@ -26,7 +39,7 @@ class FundingAgent(BaseCollectorAgent):
                     url=round_["url"],
                     source=type(provider).__name__,
                     category=self.category,
-                    published_at=round_["published_at"],
+                    published_at=_coerce_datetime(round_["published_at"]),
                     snippet=round_["snippet"],
                     metadata={"company": round_["company"], "amount_usd": round_["amount_usd"]},
                 )

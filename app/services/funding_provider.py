@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import TypedDict
 
 from app.config.logging_config import get_logger
@@ -30,7 +31,7 @@ class FundingRound(TypedDict):
     url: str
     company: str
     amount_usd: float | None
-    published_at: object
+    published_at: datetime | str
     snippet: str
 
 
@@ -115,5 +116,5 @@ class GoogleNewsFundingProvider(FundingProvider):
 def get_funding_provider() -> FundingProvider:
     settings = get_settings()
     if settings.crunchbase_api_key:
-        return CrunchbaseFundingProvider(settings.crunchbase_api_key)
+        return CrunchbaseFundingProvider(settings.crunchbase_api_key.get_secret_value())
     return GoogleNewsFundingProvider()
