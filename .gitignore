@@ -216,3 +216,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# AI Newsletter Automation - project specific
+# ---------------------------------------------------------------------------
+
+# IDEs
+.idea/
+.vscode/
+
+# Application logs (keep the directory via .gitkeep)
+logs/*.log
+logs/*.jsonl
+!logs/.gitkeep
+
+# Generated newsletter artifacts
+newsletter_output/
+data/history/*.json
+!data/history/.gitkeep
+
+# Local override configs
+.env.local
+*.local.env
