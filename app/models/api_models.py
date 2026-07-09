@@ -27,7 +27,9 @@ class GenerateNewsletterRequest(BaseModel):
         default=False,
         description="If true, bypass the deduplication cache against prior history.",
     )
-    requested_by: str | None = Field(default=None, description="Caller identifier for audit logging.")
+    requested_by: str | None = Field(
+        default=None, description="Caller identifier for audit logging."
+    )
 
 
 class NewsletterResponse(BaseModel):
