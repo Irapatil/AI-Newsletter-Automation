@@ -44,7 +44,7 @@ class MockLinkedInJobsProvider(LinkedInJobsProvider):
         postings = [
             JobPosting(
                 title=title,
-                url="https://www.linkedin.com/jobs/",
+                url=f"https://www.linkedin.com/jobs/view/sample-{index}",
                 company=company,
                 location=location,
                 published_at=now - timedelta(hours=index * 6),

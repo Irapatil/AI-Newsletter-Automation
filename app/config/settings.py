@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     newsletter_sender_name: str = "AI Newsletter Automation"
     newsletter_history_dir: str = "data/history"
     max_article_age_hours: int = 48
+    newsletter_max_total_articles: int = 24
 
     # HTTP
     http_timeout_seconds: int = 15

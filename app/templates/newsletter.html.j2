@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ content.subject }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f5f7;font-family:Segoe UI, Arial, sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7;padding:24px 0;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="680" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background-color:#0b1f3a;padding:28px 32px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="color:#ffffff;font-size:20px;font-weight:700;">{{ sender_name }}</td>
+                <td align="right" style="color:#9fb3d1;font-size:13px;">{{ content.generated_at.strftime('%B %d, %Y %H:%M UTC') }}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Executive summary -->
+        <tr>
+          <td style="padding:28px 32px 8px 32px;">
+            <h2 style="margin:0 0 10px 0;font-size:16px;color:#0b1f3a;">Executive Summary</h2>
+            <p style="margin:0;font-size:14px;line-height:1.6;color:#333333;">{{ content.executive_summary }}</p>
+          </td>
+        </tr>
+
+        <!-- One thing to watch -->
+        <tr>
+          <td style="padding:16px 32px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eef4ff;border-left:4px solid #2f6fed;border-radius:4px;">
+              <tr>
+                <td style="padding:14px 18px;">
+                  <div style="font-size:13px;font-weight:700;color:#2f6fed;margin-bottom:4px;">&#128064; One Thing To Watch</div>
+                  <div style="font-size:14px;color:#333333;line-height:1.5;">{{ content.one_thing_to_watch }}</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Sections -->
+        {% for section in content.sections %}
+        <tr>
+          <td style="padding:20px 32px 4px 32px;">
+            <h2 style="margin:0 0 12px 0;font-size:16px;color:#0b1f3a;border-bottom:2px solid #eef1f6;padding-bottom:8px;">
+              {{ section.title }}
+            </h2>
+          </td>
+        </tr>
+        {% for article in section.articles %}
+        <tr>
+          <td style="padding:0 32px 16px 32px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <a href="{{ article.url }}" style="font-size:14.5px;font-weight:600;color:#0b1f3a;text-decoration:none;">
+                    {{ article.title }}
+                  </a>
+                  <div style="font-size:11.5px;color:#8a94a6;margin-top:2px;">
+                    {{ article.source }} &middot; {{ article.published_at.strftime('%b %d, %H:%M UTC') }}
+                  </div>
+                  <p style="margin:6px 0 0 0;font-size:13px;line-height:1.55;color:#4a5568;">
+                    {{ article.ai_summary or article.snippet }}
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:24px 32px;background-color:#f8f9fb;border-top:1px solid #eef1f6;">
+            <p style="margin:0;font-size:11.5px;color:#8a94a6;line-height:1.5;">
+              Generated automatically by {{ sender_name }} using a LangGraph multi-agent pipeline.
+              This newsletter is delivered via Microsoft Power Automate and Outlook.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
