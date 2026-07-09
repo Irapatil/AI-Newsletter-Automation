@@ -17,6 +17,9 @@ src = ["app", "tests"]
 select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 ignore = ["E501"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
@@ -26,6 +29,7 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra --cov=app --cov-report=term-missing"
 
 [build-system]

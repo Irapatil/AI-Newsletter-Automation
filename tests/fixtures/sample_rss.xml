@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Sample AI News Feed</title>
+    <link>https://example.com</link>
+    <description>Sample feed for tests</description>
+    <item>
+      <title>OpenAI unveils major new model</title>
+      <link>https://example.com/articles/1</link>
+      <description>&lt;p&gt;OpenAI unveils a &lt;b&gt;major&lt;/b&gt; new AI model.&lt;/p&gt;</description>
+      <author>jane@example.com</author>
+      <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Anthropic raises new funding round</title>
+      <link>https://example.com/articles/2</link>
+      <description>Anthropic secures a new round of funding.</description>
+      <author>john@example.com</author>
+      <pubDate>Mon, 01 Jan 2024 09:30:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
