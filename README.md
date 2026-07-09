@@ -6,6 +6,7 @@ Enterprise multi-agent AI newsletter platform built with **LangGraph**,
 categorizes, deduplicates, ranks, summarizes, and formats AI industry news
 into an executive-ready newsletter — with zero manual steps.
 
+[![CI](https://github.com/Irapatil/AI-Newsletter-Automation/actions/workflows/ci.yml/badge.svg)](https://github.com/Irapatil/AI-Newsletter-Automation/actions/workflows/ci.yml)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1c3d5a.svg)](https://github.com/langchain-ai/langgraph)
@@ -203,7 +204,7 @@ step and screenshot placeholders for each action:
 ## Testing & Code Quality
 
 ```bash
-make test        # pytest, ~42 tests, all external calls mocked (respx / MockLLMService)
+make test        # pytest, 130 tests (including an end-to-end LangGraph run), all external calls mocked (respx / MockLLMService)
 make lint         # ruff + isort --check + black --check
 make format       # ruff --fix + isort + black
 make typecheck    # mypy
@@ -212,6 +213,8 @@ make check        # lint + typecheck + test
 
 No network access or API keys are required to run the test suite — outbound
 HTTP is mocked with `respx`, and the LLM defaults to `MockLLMService`.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same `make check`
+steps on every push and pull request to `main`.
 
 ## Documentation
 
