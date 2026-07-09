@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.dependencies import verify_api_key
 from app.config.logging_config import get_logger
+from app.config.settings import get_settings
 from app.graph.workflow import get_compiled_workflow
 from app.models.api_models import (
     ErrorResponse,
@@ -29,13 +30,26 @@ router = APIRouter()
 API_VERSION = "1.0.0"
 
 
+def _to_response(output: NewsletterOutput, errors: list[str] | None = None) -> NewsletterResponse:
+    return NewsletterResponse(
+        subject=output.subject,
+        summary=output.summary,
+        html=output.html,
+        markdown=output.markdown,
+        json=output.json_payload,
+        timestamp=output.timestamp,
+        errors=errors or [],
+    )
+
+
 @router.get("/", response_model=RootResponse, tags=["meta"])
 async def root() -> RootResponse:
+    is_production = get_settings().app_env == "production"
     return RootResponse(
         name="AI Newsletter Automation",
         version=API_VERSION,
         description="Enterprise multi-agent AI newsletter pipeline built with LangGraph and FastAPI.",
-        docs_url="/docs",
+        docs_url=None if is_production else "/docs",
     )
 
 
@@ -48,7 +62,7 @@ async def health() -> HealthResponse:
     "/generate-newsletter",
     response_model=NewsletterResponse,
     dependencies=[Depends(verify_api_key)],
-    responses={401: {"model": ErrorResponse}},
+    responses={401: {"model": ErrorResponse}, 502: {"model": ErrorResponse}},
     tags=["newsletter"],
 )
 async def generate_newsletter(
@@ -64,38 +78,42 @@ async def generate_newsletter(
     logger.info("generate_newsletter_requested", requested_by=request.requested_by)
 
     workflow = get_compiled_workflow()
-    final_state = await workflow.ainvoke(build_initial_state())
+    try:
+        final_state = await workflow.ainvoke(build_initial_state())
+    except Exception as exc:  # noqa: BLE001 - convert to a clean 502 for the caller
+        logger.exception("generate_newsletter_pipeline_crashed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Newsletter pipeline failed to run; see server logs for details",
+        ) from exc
 
     content = final_state.get("newsletter_content")
-    timestamp = content.generated_at if content else datetime.now(UTC)
-    newsletter_id = uuid.uuid4().hex[:12]
-
-    response = NewsletterResponse(
-        subject=content.subject if content else "AI Newsletter",
-        summary=content.executive_summary if content else "",
-        html=final_state.get("newsletter_html", ""),
-        markdown=final_state.get("newsletter_markdown", ""),
-        json=final_state.get("newsletter_json", {}),
-        timestamp=timestamp,
-    )
-
-    history_service.save_newsletter(
-        NewsletterOutput(
-            subject=response.subject,
-            summary=response.summary,
-            html=response.html,
-            markdown=response.markdown,
-            json_payload=response.json_data,
-            timestamp=response.timestamp,
-        ),
-        newsletter_id,
-    )
+    if content is None:
+        # `no_content_fallback` always produces a non-None NewsletterContent
+        # when there's simply nothing to report, so reaching here means an
+        # upstream node failed to populate state - a genuine pipeline bug,
+        # not a legitimate "quiet news day".
+        logger.error("generate_newsletter_no_content", errors=final_state.get("errors", []))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Newsletter pipeline produced no content; see server logs for details",
+        )
 
     errors = final_state.get("errors", [])
     if errors:
         logger.warning("generate_newsletter_completed_with_errors", errors=errors)
 
-    return response
+    output = NewsletterOutput(
+        subject=content.subject,
+        summary=content.executive_summary,
+        html=final_state.get("newsletter_html", ""),
+        markdown=final_state.get("newsletter_markdown", ""),
+        json_payload=final_state.get("newsletter_json", {}),
+        timestamp=content.generated_at,
+    )
+    history_service.save_newsletter(output, uuid.uuid4().hex[:12])
+
+    return _to_response(output, errors=errors)
 
 
 @router.get(
@@ -111,22 +129,18 @@ async def newsletter_latest() -> NewsletterResponse:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="No newsletter has been generated yet"
         )
-    return NewsletterResponse(
-        subject=output.subject,
-        summary=output.summary,
-        html=output.html,
-        markdown=output.markdown,
-        json=output.json_payload,
-        timestamp=output.timestamp,
-    )
+    return _to_response(output)
 
 
 @router.get(
     "/newsletter/history",
     response_model=NewsletterHistoryResponse,
     dependencies=[Depends(verify_api_key)],
+    responses={401: {"model": ErrorResponse}},
     tags=["newsletter"],
 )
-async def newsletter_history(limit: int = 20) -> NewsletterHistoryResponse:
+async def newsletter_history(
+    limit: int = Query(default=20, ge=1, le=100),
+) -> NewsletterHistoryResponse:
     items = history_service.list_history(limit=limit)
     return NewsletterHistoryResponse(items=items, count=len(items))

@@ -11,7 +11,7 @@ class RootResponse(BaseModel):
     name: str
     version: str
     description: str
-    docs_url: str
+    docs_url: str | None
 
 
 class HealthResponse(BaseModel):
@@ -23,10 +23,6 @@ class HealthResponse(BaseModel):
 class GenerateNewsletterRequest(BaseModel):
     """Optional trigger payload. Power Automate may POST an empty body."""
 
-    force_refresh: bool = Field(
-        default=False,
-        description="If true, bypass the deduplication cache against prior history.",
-    )
     requested_by: str | None = Field(
         default=None, description="Caller identifier for audit logging."
     )
@@ -43,6 +39,10 @@ class NewsletterResponse(BaseModel):
     markdown: str
     json_data: dict = Field(alias="json")
     timestamp: datetime
+    errors: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal collection/generation errors from this run, if any.",
+    )
 
 
 class NewsletterHistoryItem(BaseModel):

@@ -1,7 +1,8 @@
 # API Documentation
 
 Base URL (local): `http://localhost:8000`. Interactive OpenAPI docs are
-served at `/docs` (Swagger UI) and `/redoc` whenever the app is running.
+served at `/docs` (Swagger UI) and `/redoc` in `development`/`staging`; both
+(along with `/openapi.json`) are disabled when `APP_ENV=production`.
 
 ## Authentication
 
@@ -10,9 +11,12 @@ served at `/docs` (Swagger UI) and `/redoc` whenever the app is running.
 against the `API_AUTH_TOKEN` environment variable.
 
 - If `API_AUTH_TOKEN` is **unset** (the default), auth is skipped entirely -
-  convenient for local development and CI.
+  convenient for local development and CI. This is only permitted when
+  `APP_ENV` is `development` or `staging`; the app refuses to start with
+  `APP_ENV=production` and an empty `API_AUTH_TOKEN`.
 - If it **is** set, every request to a protected route must send
-  `X-API-Key: <API_AUTH_TOKEN>` or receive `401 Unauthorized`.
+  `X-API-Key: <API_AUTH_TOKEN>` or receive `401 Unauthorized`. The comparison
+  is constant-time (`secrets.compare_digest`).
 
 `GET /` and `GET /health` are always public (used for infra health checks).
 
@@ -45,10 +49,10 @@ Runs the full LangGraph pipeline end-to-end (collection -> dedup -> ranking
 -> GPT summarization -> rendering) and persists the result to history. This
 is the endpoint Power Automate's daily trigger calls.
 
-**Request body** (optional; both fields are optional):
+**Request body** (optional):
 
 ```json
-{ "force_refresh": false, "requested_by": "power-automate-daily-trigger" }
+{ "requested_by": "power-automate-daily-trigger" }
 ```
 
 **Response** — `200 OK`:
@@ -60,7 +64,8 @@ is the endpoint Power Automate's daily trigger calls.
   "html": "<!DOCTYPE html>...",
   "markdown": "# OpenAI unveils new reasoning model...",
   "json": { "subject": "...", "sections": [ { "key": "global_news", "title": "🌍 Global AI News", "articles": [ /* ... */ ] } ] },
-  "timestamp": "2026-07-09T08:00:12Z"
+  "timestamp": "2026-07-09T08:00:12Z",
+  "errors": []
 }
 ```
 
@@ -72,10 +77,14 @@ is the endpoint Power Automate's daily trigger calls.
 | `markdown` | string | Markdown rendition (for Slack/archival/SharePoint) |
 | `json` | object | Structured `NewsletterContent` payload (sections, articles, scores) |
 | `timestamp` | string (ISO-8601) | Generation time (UTC) |
+| `errors` | array of strings | Non-fatal collector/generation errors from this run, if any. A non-empty list means the newsletter was still generated, just with fewer sources than usual (e.g. one collector's feed was down) - still a `200`, not a failure. |
 
 A run typically takes 15-40 seconds depending on network latency across the
 eight collector sources and, if a live LLM key is configured, GPT summary
-latency.
+latency. If the pipeline itself crashes, or produces no content at all
+(a genuine bug, not just "no news today" - that case still returns `200`
+with an empty-sections newsletter), the endpoint returns `502` instead of a
+fabricated response.
 
 ### `GET /newsletter/latest`
 
@@ -103,7 +112,8 @@ Query params: `limit` (default `20`).
 |---|---|
 | `401` | Missing/incorrect `X-API-Key` when `API_AUTH_TOKEN` is set |
 | `404` | `GET /newsletter/latest` called before any newsletter exists |
-| `422` | Invalid request body on `POST /generate-newsletter` |
+| `422` | Invalid request body, or an out-of-range `limit` on `GET /newsletter/history` (must be 1-100) |
+| `502` | The LangGraph pipeline crashed, or produced no content at all - see server logs |
 
 ## Example: curl
 
