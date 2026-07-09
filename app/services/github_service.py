@@ -41,7 +41,7 @@ async def fetch_trending_ai_repos(max_results: int = 15, days: int = 7) -> list[
         "q": _build_query(days),
         "sort": "stars",
         "order": "desc",
-        "per_page": str(max_results),
+        "per_page": str(min(max_results, 100)),  # GitHub Search API's documented cap
     }
 
     try:

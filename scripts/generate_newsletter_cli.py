@@ -22,7 +22,7 @@ from app.models.state import build_initial_state  # noqa: E402
 
 async def _run(output_dir: Path | None) -> None:
     settings = get_settings()
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.app_env)
 
     workflow = build_workflow()
     final_state = await workflow.ainvoke(build_initial_state())

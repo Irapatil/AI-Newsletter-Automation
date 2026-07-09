@@ -22,6 +22,8 @@ def strip_html(raw_html: str) -> str:
 
 
 def truncate(text: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1].rstrip() + "…"

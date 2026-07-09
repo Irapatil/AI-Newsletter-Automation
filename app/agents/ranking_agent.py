@@ -142,7 +142,7 @@ class RankingAgent:
 
         ranked: list[Article] = []
         for category_articles in by_category.values():
-            category_articles.sort(key=lambda a: a.scores.total if a.scores else 0.0, reverse=True)
+            category_articles.sort(key=lambda a: a.scores.total, reverse=True)
             ranked.extend(category_articles[:top_n])
 
         logger.info(

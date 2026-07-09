@@ -11,6 +11,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from app.config.logging_config import get_logger
 from app.config.settings import get_settings
 from app.models.api_models import NewsletterHistoryItem
@@ -44,10 +46,11 @@ def _sorted_history_files() -> list[Path]:
 
 
 def get_latest() -> NewsletterOutput | None:
-    files = _sorted_history_files()
-    if not files:
-        return None
-    return _load(files[0])
+    for path in _sorted_history_files():
+        output = _load(path)
+        if output is not None:
+            return output
+    return None
 
 
 def list_history(limit: int = 20) -> list[NewsletterHistoryItem]:
@@ -62,7 +65,7 @@ def list_history(limit: int = 20) -> list[NewsletterHistoryItem]:
                     timestamp=payload["timestamp"],
                 )
             )
-        except (KeyError, json.JSONDecodeError) as exc:
+        except (KeyError, json.JSONDecodeError, ValidationError) as exc:
             logger.warning("history_file_unreadable", path=str(path), error=str(exc))
     return items
 
@@ -72,6 +75,6 @@ def _load(path: Path) -> NewsletterOutput | None:
         payload = json.loads(path.read_text(encoding="utf-8"))
         payload.pop("id", None)
         return NewsletterOutput.model_validate(payload)
-    except (KeyError, json.JSONDecodeError) as exc:
+    except (KeyError, json.JSONDecodeError, ValidationError) as exc:
         logger.warning("history_file_unreadable", path=str(path), error=str(exc))
         return None

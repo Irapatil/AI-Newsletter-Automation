@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from app.config.logging_config import get_logger
 from app.config.settings import get_settings
-from app.models.article import Article
+from app.models.article import Article, NewsCategory
 from app.models.newsletter import (
     SECTION_ORDER,
     SECTION_TITLES,
@@ -56,9 +56,8 @@ class NewsletterGeneratorAgent:
         if capped_articles:
             await self._summarize_articles(capped_articles)
 
-        top_story = max(
-            capped_articles, key=lambda a: a.scores.total if a.scores else 0.0, default=None
-        )
+        # _apply_global_cap always returns articles sorted by score descending.
+        top_story = capped_articles[0] if capped_articles else None
 
         executive_summary, subject, one_thing_to_watch = await asyncio.gather(
             self._generate_executive_summary(capped_articles),
@@ -76,9 +75,33 @@ class NewsletterGeneratorAgent:
 
     @staticmethod
     def _apply_global_cap(articles: list[Article]) -> list[Article]:
+        """Trim to `newsletter_max_total_articles`, but reserve each present
+        category's top story first so a single global score cutoff can't
+        erase an entire section - RankingAgent already caps candidates per
+        category specifically to keep every section represented, and a
+        category-blind trim here would otherwise undo that.
+        """
         max_total = get_settings().newsletter_max_total_articles
-        ordered = sorted(articles, key=lambda a: a.scores.total if a.scores else 0.0, reverse=True)
-        return ordered[:max_total]
+        ordered = sorted(articles, key=lambda a: a.scores.total, reverse=True)
+        if len(ordered) <= max_total:
+            return ordered
+
+        reserved: list[Article] = []
+        seen_categories: set[NewsCategory] = set()
+        for article in ordered:
+            if article.category not in seen_categories:
+                reserved.append(article)
+                seen_categories.add(article.category)
+
+        remaining_budget = max_total - len(reserved)
+        if remaining_budget <= 0:
+            return sorted(reserved[:max_total], key=lambda a: a.scores.total, reverse=True)
+
+        reserved_ids = {article.id for article in reserved}
+        fill = [article for article in ordered if article.id not in reserved_ids][:remaining_budget]
+        combined = reserved + fill
+        combined.sort(key=lambda a: a.scores.total, reverse=True)
+        return combined
 
     async def _summarize_articles(self, articles: list[Article]) -> None:
         semaphore = asyncio.Semaphore(_MAX_CONCURRENT_SUMMARIES)
@@ -102,7 +125,7 @@ class NewsletterGeneratorAgent:
             section_articles = by_category.get(key, [])
             if not section_articles:
                 continue
-            section_articles.sort(key=lambda a: a.scores.total if a.scores else 0.0, reverse=True)
+            section_articles.sort(key=lambda a: a.scores.total, reverse=True)
             sections.append(
                 NewsletterSection(key=key, title=SECTION_TITLES[key], articles=section_articles)
             )

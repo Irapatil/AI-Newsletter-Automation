@@ -8,8 +8,12 @@ import sys
 import structlog
 
 
-def configure_logging(log_level: str = "INFO") -> None:
-    """Configure structlog + stdlib logging for JSON-structured output.
+def configure_logging(log_level: str = "INFO", app_env: str = "production") -> None:
+    """Configure structlog + stdlib logging.
+
+    Renders human-readable, colorized output in `development`; renders
+    machine-parseable JSON everywhere else (staging/production/CI), so log
+    aggregators get structured fields without needing dev-only tooling.
 
     Idempotent: safe to call multiple times (e.g. once at API startup and
     once at CLI/script startup) without duplicating handlers.
@@ -23,6 +27,12 @@ def configure_logging(log_level: str = "INFO") -> None:
         force=True,
     )
 
+    renderer = (
+        structlog.dev.ConsoleRenderer()
+        if app_env == "development"
+        else structlog.processors.JSONRenderer()
+    )
+
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -30,7 +40,7 @@ def configure_logging(log_level: str = "INFO") -> None:
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
-            structlog.processors.JSONRenderer(),
+            renderer,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(level),
         context_class=dict,

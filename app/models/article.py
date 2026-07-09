@@ -57,10 +57,8 @@ class Article(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     embedding: list[float] | None = None
-    scores: ArticleScores | None = None
+    scores: ArticleScores = Field(default_factory=ArticleScores)
     ai_summary: str | None = None
-
-    model_config = {"use_enum_values": False}
 
     @field_validator("id", mode="before")
     @classmethod
