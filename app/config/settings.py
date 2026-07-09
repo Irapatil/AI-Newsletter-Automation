@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +24,8 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     log_level: str = "INFO"
-    api_auth_token: str = ""
+    api_auth_token: SecretStr = SecretStr("")
+    allowed_hosts: str = "*"
 
     # LLM provider
     llm_provider: Literal["openai", "azure_openai", "mock"] = "openai"
@@ -78,6 +80,43 @@ class Settings(BaseSettings):
             raise ValueError("dedup_similarity_threshold must be between 0.0 and 1.0")
         return value
 
+    @field_validator(
+        "ranking_weight_freshness",
+        "ranking_weight_importance",
+        "ranking_weight_business_impact",
+        "ranking_weight_source_credibility",
+        "ranking_weight_research_impact",
+        "ranking_weight_ai_relevance",
+    )
+    @classmethod
+    def _validate_ranking_weight(cls, value: float) -> float:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("ranking_weight_* fields must be between 0.0 and 1.0")
+        return value
+
+    @field_validator("ranking_top_stories_per_section", "max_article_age_hours", "http_max_retries")
+    @classmethod
+    def _validate_positive_int(cls, value: int, info: Any) -> int:
+        if value < 1:
+            raise ValueError(f"{info.field_name} must be >= 1")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_ranking_weights_sum(self) -> Settings:
+        total = sum(self.ranking_weights.values())
+        if not math.isclose(total, 1.0, abs_tol=0.01):
+            raise ValueError(f"ranking_weight_* fields must sum to ~1.0, got {total:.3f}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_production_requires_auth_token(self) -> Settings:
+        if self.app_env == "production" and not self.api_auth_token.get_secret_value():
+            raise ValueError(
+                "API_AUTH_TOKEN must be set when APP_ENV=production - "
+                "refusing to start an unauthenticated production API"
+            )
+        return self
+
     @property
     def greenhouse_board_token_list(self) -> list[str]:
         return [token.strip() for token in self.greenhouse_board_tokens.split(",") if token.strip()]
@@ -87,13 +126,22 @@ class Settings(BaseSettings):
         return [slug.strip() for slug in self.lever_company_slugs.split(",") if slug.strip()]
 
     @property
+    def allowed_hosts_list(self) -> list[str]:
+        return [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
+
+    @property
     def uses_mock_llm(self) -> bool:
         if self.llm_provider == "mock":
             return True
         if self.llm_provider == "openai":
-            return not self.openai_api_key
+            return not self.openai_api_key.get_secret_value()
         if self.llm_provider == "azure_openai":
-            return not (self.azure_openai_api_key and self.azure_openai_endpoint)
+            return not (
+                self.azure_openai_api_key.get_secret_value()
+                and self.azure_openai_endpoint
+                and self.azure_openai_chat_deployment
+                and self.azure_openai_embedding_deployment
+            )
         return True
 
     @property
