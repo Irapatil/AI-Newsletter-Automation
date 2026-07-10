@@ -19,7 +19,7 @@ from app.models.api_models import (
     NewsletterResponse,
     RootResponse,
 )
-from app.models.newsletter import NewsletterOutput
+from app.models.newsletter import NewsletterOutput, NewsletterStats
 from app.models.state import build_initial_state
 from app.services import history_service
 
@@ -39,7 +39,32 @@ def _to_response(output: NewsletterOutput, errors: list[str] | None = None) -> N
         json=output.json_payload,
         timestamp=output.timestamp,
         errors=errors or [],
+        stats=output.stats,
     )
+
+
+def _provider_statuses() -> dict[str, str]:
+    """Best-effort, call-free status per integration, derived from settings
+    that are already loaded (no outbound network calls - this is a cheap
+    liveness/config check, not a deep health probe of each provider).
+    """
+    settings = get_settings()
+    langgraph_status = "operational"
+    try:
+        get_compiled_workflow()
+    except Exception:  # noqa: BLE001 - report, don't crash the health check
+        langgraph_status = "error"
+
+    return {
+        "api": "ok",
+        "openai": "mock" if settings.uses_mock_llm else "configured",
+        "newsapi": (
+            "configured" if settings.newsapi_api_key.get_secret_value() else "not_configured"
+        ),
+        "github": "authenticated" if settings.github_token.get_secret_value() else "public",
+        "rss": "available",
+        "langgraph": langgraph_status,
+    }
 
 
 @router.get("/", response_model=RootResponse, tags=["meta"])
@@ -55,7 +80,12 @@ async def root() -> RootResponse:
 
 @router.get("/health", response_model=HealthResponse, tags=["meta"])
 async def health() -> HealthResponse:
-    return HealthResponse(status="ok", timestamp=datetime.now(UTC), version=API_VERSION)
+    return HealthResponse(
+        status="ok",
+        timestamp=datetime.now(UTC),
+        version=API_VERSION,
+        providers=_provider_statuses(),
+    )
 
 
 @router.post(
@@ -103,6 +133,11 @@ async def generate_newsletter(
     if errors:
         logger.warning("generate_newsletter_completed_with_errors", errors=errors)
 
+    aggregated_count = len(final_state.get("aggregated_articles", []))
+    deduplicated_count = len(final_state.get("deduplicated_articles", []))
+    ranked_count = len(final_state.get("ranked_news", []))
+    stories_selected = sum(len(section.articles) for section in content.sections)
+
     output = NewsletterOutput(
         subject=content.subject,
         summary=content.executive_summary,
@@ -110,6 +145,12 @@ async def generate_newsletter(
         markdown=final_state.get("newsletter_markdown", ""),
         json_payload=final_state.get("newsletter_json", {}),
         timestamp=content.generated_at,
+        stats=NewsletterStats(
+            aggregated_count=aggregated_count,
+            duplicates_removed=max(aggregated_count - deduplicated_count, 0),
+            ranked_count=ranked_count,
+            stories_selected=stories_selected,
+        ),
     )
     history_service.save_newsletter(output, uuid.uuid4().hex[:12])
 

@@ -49,6 +49,20 @@ class NewsletterContent(BaseModel):
     generated_at: datetime
 
 
+class NewsletterStats(BaseModel):
+    """Pipeline counters surfaced for observability/demo purposes.
+
+    Populated from state the pipeline already computes (see
+    `app/api/routes.py::generate_newsletter`); defaults to zeros so older
+    persisted history files without this field still parse.
+    """
+
+    aggregated_count: int = 0
+    duplicates_removed: int = 0
+    ranked_count: int = 0
+    stories_selected: int = 0
+
+
 class NewsletterOutput(BaseModel):
     """Final newsletter artifact returned by the API and persisted to history."""
 
@@ -58,3 +72,4 @@ class NewsletterOutput(BaseModel):
     markdown: str
     json_payload: dict = Field(default_factory=dict)
     timestamp: datetime
+    stats: NewsletterStats = Field(default_factory=NewsletterStats)

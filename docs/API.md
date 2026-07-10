@@ -37,11 +37,35 @@ Returns basic service metadata.
 
 ### `GET /health`
 
-Liveness/readiness probe.
+Liveness/readiness probe, plus a call-free, per-integration status summary
+(no outbound network calls are made - this reads already-loaded settings and
+confirms the LangGraph workflow compiles, it does not verify each provider
+is actually reachable).
 
 ```json
-{ "status": "ok", "timestamp": "2026-07-09T06:00:00Z", "version": "1.0.0" }
+{
+  "status": "ok",
+  "timestamp": "2026-07-09T06:00:00Z",
+  "version": "1.0.0",
+  "providers": {
+    "api": "ok",
+    "openai": "configured",
+    "newsapi": "configured",
+    "github": "authenticated",
+    "rss": "available",
+    "langgraph": "operational"
+  }
+}
 ```
+
+| Provider | Possible values | Meaning |
+|---|---|---|
+| `api` | `ok` | The endpoint responded |
+| `openai` | `configured` \| `mock` | Real key present vs. falling back to `MockLLMService` |
+| `newsapi` | `configured` \| `not_configured` | Optional supplemental source |
+| `github` | `authenticated` \| `public` | Whether `GITHUB_TOKEN` raises the Search API rate limit |
+| `rss` | `available` | RSS/Atom collection needs no credentials |
+| `langgraph` | `operational` \| `error` | Whether the compiled `StateGraph` built without raising |
 
 ### `POST /generate-newsletter`
 
@@ -65,7 +89,13 @@ is the endpoint Power Automate's daily trigger calls.
   "markdown": "# OpenAI unveils new reasoning model...",
   "json": { "subject": "...", "sections": [ { "key": "global_news", "title": "🌍 Global AI News", "articles": [ /* ... */ ] } ] },
   "timestamp": "2026-07-09T08:00:12Z",
-  "errors": []
+  "errors": [],
+  "stats": {
+    "aggregated_count": 1072,
+    "duplicates_removed": 198,
+    "ranked_count": 40,
+    "stories_selected": 24
+  }
 }
 ```
 
@@ -78,6 +108,7 @@ is the endpoint Power Automate's daily trigger calls.
 | `json` | object | Structured `NewsletterContent` payload (sections, articles, scores) |
 | `timestamp` | string (ISO-8601) | Generation time (UTC) |
 | `errors` | array of strings | Non-fatal collector/generation errors from this run, if any. A non-empty list means the newsletter was still generated, just with fewer sources than usual (e.g. one collector's feed was down) - still a `200`, not a failure. |
+| `stats` | object | Pipeline counters: `aggregated_count` (raw articles collected across all 8 agents), `duplicates_removed` (by semantic dedup), `ranked_count` (post-ranking candidates), `stories_selected` (final articles in the newsletter) |
 
 A run typically takes 15-40 seconds depending on network latency across the
 eight collector sources and, if a live LLM key is configured, GPT summary

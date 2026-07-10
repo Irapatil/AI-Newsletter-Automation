@@ -6,6 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.newsletter import NewsletterStats
+
 
 class RootResponse(BaseModel):
     name: str
@@ -18,6 +20,16 @@ class HealthResponse(BaseModel):
     status: str
     timestamp: datetime
     version: str
+    providers: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Per-integration status keyed by provider name (openai, newsapi, "
+            "github, rss, langgraph). Values are informational strings such "
+            "as 'configured', 'mock', 'not_configured', 'public', "
+            "'authenticated', 'operational', or 'error' - not a liveness "
+            "guarantee, since none of these are called during a health check."
+        ),
+    )
 
 
 class GenerateNewsletterRequest(BaseModel):
@@ -43,6 +55,7 @@ class NewsletterResponse(BaseModel):
         default_factory=list,
         description="Non-fatal collection/generation errors from this run, if any.",
     )
+    stats: NewsletterStats = Field(default_factory=NewsletterStats)
 
 
 class NewsletterHistoryItem(BaseModel):

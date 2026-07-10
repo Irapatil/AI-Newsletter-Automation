@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 
 import app.api.routes as routes_module
 from app.main import app
-from app.models.newsletter import NewsletterContent
+from app.models.newsletter import NewsletterContent, NewsletterSection
+from tests.conftest import make_article
 
 
 class _FakeCompiledGraph:
@@ -22,10 +23,11 @@ class _FakeCompiledGraph:
 
 
 def _canned_final_state() -> dict:
+    article = make_article(title="Test Article", url="https://example.com/1")
     content = NewsletterContent(
         subject="Test Subject",
         executive_summary="Test summary.",
-        sections=[],
+        sections=[NewsletterSection(key="global_news", title="Global", articles=[article])],
         one_thing_to_watch="Watch this.",
         generated_at=datetime.now(UTC),
     )
@@ -35,6 +37,9 @@ def _canned_final_state() -> dict:
         "newsletter_markdown": "# Test",
         "newsletter_json": {"subject": "Test Subject"},
         "errors": [],
+        "aggregated_articles": [article, article, article],
+        "deduplicated_articles": [article, article],
+        "ranked_news": [article],
     }
 
 
@@ -57,7 +62,27 @@ def test_root_returns_metadata(client: TestClient) -> None:
 def test_health_returns_ok(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    body = response.json()
+    assert body["status"] == "ok"
+    assert set(body["providers"].keys()) == {
+        "api",
+        "openai",
+        "newsapi",
+        "github",
+        "rss",
+        "langgraph",
+    }
+    assert body["providers"]["api"] == "ok"
+    assert body["providers"]["langgraph"] == "operational"
+
+
+def test_health_reports_openai_mock_when_no_key_configured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    response = client.get("/health")
+    assert response.json()["providers"]["openai"] == "mock"
 
 
 def test_generate_newsletter_returns_expected_payload(client: TestClient) -> None:
@@ -68,6 +93,12 @@ def test_generate_newsletter_returns_expected_payload(client: TestClient) -> Non
     assert body["summary"] == "Test summary."
     assert body["html"] == "<html>test</html>"
     assert body["json"] == {"subject": "Test Subject"}
+    assert body["stats"] == {
+        "aggregated_count": 3,
+        "duplicates_removed": 1,
+        "ranked_count": 1,
+        "stories_selected": 1,
+    }
 
 
 def test_generate_newsletter_persists_to_history(client: TestClient) -> None:
