@@ -22,6 +22,7 @@ into an executive-ready newsletter — with zero manual steps.
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [API Usage](#api-usage)
+- [Frontend Dashboard](#frontend-dashboard)
 - [Running with Docker](#running-with-docker)
 - [Power Automate Integration](#power-automate-integration)
 - [Testing & Code Quality](#testing--code-quality)
@@ -177,6 +178,30 @@ Prefer not to stand up the API at all? Run the pipeline directly:
 ```bash
 python scripts/generate_newsletter_cli.py --output-dir newsletter_output
 ```
+
+## Frontend Dashboard
+
+An enterprise-styled React/TypeScript dashboard lives in
+[`frontend/`](frontend/) — a Microsoft Copilot-style console for demoing the
+pipeline: a Dashboard (system status), Generate Newsletter (with a simulated
+agent-by-agent progress view — the backend has no SSE/WebSocket streaming
+today, so this is a client-side simulation that snaps to the true result the
+moment the API actually responds), the rendered Newsletter with execution
+metrics and download/copy actions, History, and Health.
+
+```bash
+cd frontend
+npm install
+cp .env.example .env   # set VITE_API_KEY to match API_AUTH_TOKEN if auth is enabled
+npm run dev
+```
+
+See [`frontend/README.md`](frontend/README.md) for details. Two backend
+endpoints gained small, additive, backward-compatible fields to support it
+(`GET /health`'s `providers` breakdown, `POST /generate-newsletter`'s
+`stats` object) — no LangGraph, agent, or business-logic changes. The
+backend also now allows CORS from the frontend's dev-server origin by
+default (`CORS_ALLOWED_ORIGINS`, see Configuration above).
 
 ## Running with Docker
 
