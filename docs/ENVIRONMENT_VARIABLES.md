@@ -15,6 +15,7 @@ for the authoritative defaults.
 | `LOG_LEVEL` | `INFO` | Python logging level. In `development`, logs render as human-readable colorized text; otherwise as JSON. |
 | `API_AUTH_TOKEN` | *(empty)* | Shared secret required as `X-API-Key` on protected routes. Empty disables auth on `development`/`staging`. **Required when `APP_ENV=production`** - the app refuses to start otherwise. Stored as `SecretStr` (masked in logs). |
 | `ALLOWED_HOSTS` | `*` | Comma-separated `Host` header allowlist (`TrustedHostMiddleware`). Set to your real domain(s) in production. |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated browser origins allowed to call this API directly (`CORSMiddleware`) - defaults to the `frontend/` Vite dev server. Add your deployed frontend's origin in production. |
 
 ## LLM Provider
 

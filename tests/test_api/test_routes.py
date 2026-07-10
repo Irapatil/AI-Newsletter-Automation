@@ -59,6 +59,31 @@ def test_root_returns_metadata(client: TestClient) -> None:
     assert response.json()["name"] == "AI Newsletter Automation"
 
 
+def test_cors_allows_configured_frontend_origin(client: TestClient) -> None:
+    response = client.get("/health", headers={"Origin": "http://localhost:5173"})
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_cors_preflight_allows_x_api_key_header(client: TestClient) -> None:
+    response = client.options(
+        "/generate-newsletter",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "X-API-Key",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_cors_rejects_unconfigured_origin(client: TestClient) -> None:
+    response = client.get("/health", headers={"Origin": "http://evil.example.com"})
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+
+
 def test_health_returns_ok(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200

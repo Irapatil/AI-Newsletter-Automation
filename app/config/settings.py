@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     api_auth_token: SecretStr = SecretStr("")
     allowed_hosts: str = "*"
+    cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # LLM provider
     llm_provider: Literal["openai", "azure_openai", "mock"] = "openai"
@@ -128,6 +129,10 @@ class Settings(BaseSettings):
     @property
     def allowed_hosts_list(self) -> list[str]:
         return [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
     @property
     def uses_mock_llm(self) -> bool:
