@@ -11,7 +11,11 @@ const PROVIDER_META: Record<
   string,
   { label: string; icon: typeof Globe; description: string }
 > = {
-  api: { label: "API", icon: Globe, description: "The FastAPI backend responded to this request." },
+  api: {
+    label: "FastAPI",
+    icon: Globe,
+    description: "The FastAPI backend responded to this request.",
+  },
   openai: {
     label: "OpenAI",
     icon: Bot,

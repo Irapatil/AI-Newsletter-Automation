@@ -5,7 +5,7 @@ pipeline: trigger a run, watch simulated agent-by-agent progress, review the
 rendered newsletter, browse history, and check integration health.
 
 Built with **React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui (Radix
-primitives, hand-integrated) + Lucide icons + Axios**.
+primitives, hand-integrated) + Lucide icons + Axios + TanStack React Query**.
 
 > **This frontend only reads/writes existing backend endpoints.** No
 > LangGraph, agent, or business logic was touched. Two backend endpoints
@@ -61,16 +61,16 @@ Visit `http://localhost:5173`.
 
 ## Pages
 
-1. **Dashboard** — system status (API/LangGraph/OpenAI, from `GET /health`), last run (from `GET /newsletter/history`), and a static "next scheduled run" note (scheduling lives in Power Automate, not this API).
+1. **Dashboard** — system health (Backend/LangGraph/OpenAI, from `GET /health`), last newsletter generated + next scheduled run (a static note — scheduling lives in Power Automate, not this API), and Quick Stats (articles collected/duplicates removed/stories selected from the latest edition).
 2. **Generate Newsletter** — the trigger button. Since the backend runs the whole pipeline synchronously and returns only the final result (no SSE/WebSocket streaming exists today), progress is **simulated** node-by-node while the real request is in flight, and only snaps to "complete" once the actual response arrives — it never reports success before the API genuinely responds. On failure, the real error is shown with a manual retry (not auto-retried, since re-running the full pipeline is expensive).
-3. **Newsletter** — the generated/most-recent edition: rendered HTML (sandboxed iframe), a structured section/article view, raw Markdown, plus a metrics panel (execution time, articles aggregated, duplicates removed, stories selected — all real; OpenAI tokens/cost are clearly-labeled client-side **estimates**, since the API doesn't return actual usage data) and download/copy actions.
-4. **History** — list from `GET /newsletter/history`. The API only ever returns full content for the single latest edition (`GET /newsletter/latest`) — there's no per-edition detail endpoint yet, so history rows show metadata only (this is called out in the UI, not hidden).
-5. **Health** — `GET /health`'s per-provider breakdown (OpenAI, NewsAPI, GitHub, RSS, LangGraph), each with a tooltip explaining exactly what the status means and how it was determined (all are config/compile checks — no outbound calls are made to any provider during a health check).
+3. **Newsletter** — the generated/most-recent edition: rendered HTML (sandboxed iframe, also used for the Print action via `contentWindow.print()`), a structured section/article view, raw Markdown, plus a metrics panel (execution time, articles collected, duplicates removed, stories ranked, stories selected — all real; OpenAI tokens/cost are clearly-labeled client-side **estimates**, since the API doesn't return actual usage data) and download/copy/print actions.
+4. **History** — timeline view from `GET /newsletter/history`, with client-side search-by-subject. The API only ever returns full content for the single latest edition (`GET /newsletter/latest`) — there's no per-edition detail endpoint yet, so history rows show metadata only (this is called out in the UI, not hidden).
+5. **Health** — `GET /health`'s per-provider breakdown (FastAPI, OpenAI, NewsAPI, GitHub, RSS, LangGraph), each with a tooltip explaining exactly what the status means and how it was determined (all are config/compile checks — no outbound calls are made to any provider during a health check).
 
 ## Architecture notes
 
-- **State**: a small `NewsletterContext` (`src/hooks/use-newsletter.tsx`) holds the last-generated/loaded newsletter so the Generate and Newsletter pages share data without prop-drilling or a heavier state library.
-- **API client**: `src/lib/api.ts` wraps Axios with a typed error (`ApiError`) that translates 401/404/502/network failures into readable messages, and retries idempotent GETs (health/history/latest) with exponential backoff on network errors or 5xx — `POST /generate-newsletter` is intentionally not auto-retried.
+- **Data fetching**: [TanStack React Query](https://tanstack.com/query) (`src/lib/queryClient.ts`, `src/hooks/use-health.ts`, `src/hooks/use-newsletter-queries.ts`) handles all server state — caching, loading/error states, polling (`useHealth` refetches every 30s), and retry. `useGenerateNewsletter()` is a mutation whose `onSuccess` seeds the `["newsletter","latest"]` query cache directly, so the Generate and Newsletter pages share data with no prop-drilling or hand-rolled context.
+- **API client**: `src/lib/api.ts` wraps Axios with a typed error (`ApiError`) that translates 401/404/502/network failures into readable messages, and retries idempotent GETs (health/history/latest) with exponential backoff on network errors or 5xx — `POST /generate-newsletter` is intentionally not auto-retried (React Query's own `retry` is also disabled for it).
 - **Theming**: a hand-rolled `ThemeProvider` (`src/hooks/use-theme.tsx`) toggles a `light`/`dark` class on `<html>`, persisted to `localStorage`, respecting `prefers-color-scheme` on first load.
 - **UI primitives**: `src/components/ui/*` follow the shadcn/ui pattern (Radix primitives + `class-variance-authority` + Tailwind) — copied into the project rather than depending on a component library, per shadcn's own convention.
 

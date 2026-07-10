@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useRef } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -10,6 +10,7 @@ import {
   Coins,
   DollarSign,
   Download,
+  Printer,
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,21 +19,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { MetricCard } from "@/components/MetricCard";
 import { NewsletterViewer } from "@/components/NewsletterViewer";
-import { useNewsletter } from "@/hooks/use-newsletter";
-import { downloadTextFile, copyToClipboard, estimateTokensAndCost, formatDateTime, formatDuration } from "@/lib/utils";
+import { useLastExecutionTime, useLatestNewsletter } from "@/hooks/use-newsletter-queries";
+import {
+  downloadTextFile,
+  copyToClipboard,
+  estimateTokensAndCost,
+  formatDateTime,
+  formatDuration,
+} from "@/lib/utils";
 
 export function NewsletterPage() {
-  const { data, executionTimeMs, loadingLatest, error, loadLatest } = useNewsletter();
+  const { data, isLoading, error } = useLatestNewsletter();
+  const { data: executionTimeMs } = useLastExecutionTime();
+  const previewFrameRef = useRef<HTMLIFrameElement>(null);
 
-  useEffect(() => {
-    if (!data) {
-      loadLatest();
-    }
-    // Only ever auto-load once on mount if nothing is loaded yet.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (loadingLatest && !data) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-64" />
@@ -74,9 +75,25 @@ export function NewsletterPage() {
 
   function handleDownload(kind: "html" | "markdown") {
     if (!data) return;
-    const filename = `newsletter-${new Date(data.timestamp).toISOString().slice(0, 10)}.${kind === "html" ? "html" : "md"}`;
-    downloadTextFile(filename, kind === "html" ? data.html : data.markdown, kind === "html" ? "text/html" : "text/markdown");
+    const datePart = new Date(data.timestamp).toISOString().slice(0, 10);
+    const filename =
+      kind === "html" ? `newsletter-${datePart}.html` : `newsletter-${datePart}.md`;
+    downloadTextFile(
+      filename,
+      kind === "html" ? data.html : data.markdown,
+      kind === "html" ? "text/html" : "text/markdown",
+    );
     toast.success(`Downloaded ${filename}`);
+  }
+
+  function handlePrint() {
+    const frameWindow = previewFrameRef.current?.contentWindow;
+    if (!frameWindow) {
+      toast.error("Preview isn't ready to print yet");
+      return;
+    }
+    frameWindow.focus();
+    frameWindow.print();
   }
 
   return (
@@ -95,7 +112,12 @@ export function NewsletterPage() {
           )}
         </div>
 
-        <NewsletterViewer html={data.html} markdown={data.markdown} content={data.json} />
+        <NewsletterViewer
+          ref={previewFrameRef}
+          html={data.html}
+          markdown={data.markdown}
+          content={data.json}
+        />
 
         <Card>
           <CardContent className="flex flex-wrap gap-2 p-4">
@@ -111,9 +133,17 @@ export function NewsletterPage() {
               <CopyIcon className="h-4 w-4" />
               Copy HTML
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleCopy("Markdown", data.markdown)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleCopy("Markdown", data.markdown)}
+            >
               <CopyIcon className="h-4 w-4" />
               Copy Markdown
+            </Button>
+            <Button variant="outline" size="sm" onClick={handlePrint}>
+              <Printer className="h-4 w-4" />
+              Print
             </Button>
           </CardContent>
         </Card>
@@ -124,12 +154,13 @@ export function NewsletterPage() {
         {executionTimeMs != null && (
           <MetricCard label="Execution Time" value={formatDuration(executionTimeMs)} icon={Clock} />
         )}
-        <MetricCard label="Articles Aggregated" value={data.stats.aggregated_count} icon={Files} />
+        <MetricCard label="Articles Collected" value={data.stats.aggregated_count} icon={Files} />
         <MetricCard
           label="Duplicates Removed"
           value={data.stats.duplicates_removed}
           icon={Layers}
         />
+        <MetricCard label="Stories Ranked" value={data.stats.ranked_count} icon={ListChecks} />
         <MetricCard label="Stories Selected" value={data.stats.stories_selected} icon={ListChecks} />
         <Separator />
         <MetricCard
@@ -140,7 +171,7 @@ export function NewsletterPage() {
           hint="Heuristic (~4 chars/token) — not returned by the API"
         />
         <MetricCard
-          label="LLM Cost (Estimated)"
+          label="Estimated Cost"
           value={`$${costUsd.toFixed(4)}`}
           icon={DollarSign}
           accent="warning"

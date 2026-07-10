@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Activity,
@@ -8,39 +7,24 @@ import {
   Clock,
   Sparkles,
   ArrowRight,
+  Files,
+  Layers,
+  ListChecks,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
+import { MetricCard } from "@/components/MetricCard";
 import { useHealth } from "@/hooks/use-health";
-import { api, type ApiError } from "@/lib/api";
+import { useLatestNewsletter, useNewsletterHistory } from "@/hooks/use-newsletter-queries";
 import { formatRelativeTime } from "@/lib/utils";
-import type { NewsletterHistoryItem } from "@/types/api";
 
 export function DashboardPage() {
   const { health, loading: healthLoading } = useHealth();
-  const [lastRun, setLastRun] = useState<NewsletterHistoryItem | null>(null);
-  const [historyError, setHistoryError] = useState<ApiError | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getHistory(1)
-      .then((res) => {
-        if (!cancelled) setLastRun(res.items[0] ?? null);
-      })
-      .catch((err) => {
-        if (!cancelled) setHistoryError(err as ApiError);
-      })
-      .finally(() => {
-        if (!cancelled) setHistoryLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: history, isLoading: historyLoading, error: historyError } = useNewsletterHistory(1);
+  const { data: latest } = useLatestNewsletter();
+  const lastRun = history?.items[0] ?? null;
 
   return (
     <div className="space-y-6">
@@ -63,12 +47,12 @@ export function DashboardPage() {
       </div>
 
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">System Status</h3>
+        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">System Health</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                API Status
+                Backend Status
               </CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -119,7 +103,9 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
             <Clock className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm font-medium text-muted-foreground">Last Run</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Last Newsletter Generated
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {historyLoading ? (
@@ -160,6 +146,31 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {latest && (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+            Quick Stats <span className="font-normal">(most recent edition)</span>
+          </h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <MetricCard
+              label="Articles Collected"
+              value={latest.stats.aggregated_count}
+              icon={Files}
+            />
+            <MetricCard
+              label="Duplicates Removed"
+              value={latest.stats.duplicates_removed}
+              icon={Layers}
+            />
+            <MetricCard
+              label="Stories Selected"
+              value={latest.stats.stories_selected}
+              icon={ListChecks}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
