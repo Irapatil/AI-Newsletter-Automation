@@ -12,7 +12,7 @@ import operator
 from typing import Annotated, TypedDict
 
 from app.models.article import Article
-from app.models.newsletter import NewsletterContent
+from app.models.newsletter import AgentExecutionRecord, NewsletterContent
 
 
 class GraphState(TypedDict, total=False):
@@ -40,6 +40,7 @@ class GraphState(TypedDict, total=False):
     # Observability
     execution_logs: Annotated[list[str], operator.add]
     errors: Annotated[list[str], operator.add]
+    agent_execution: Annotated[list[AgentExecutionRecord], operator.add]
 
 
 COLLECTOR_STATE_KEYS: list[str] = [
@@ -66,4 +67,5 @@ def build_initial_state() -> GraphState:
     state["newsletter_json"] = {}
     state["execution_logs"] = []
     state["errors"] = []
+    state["agent_execution"] = []
     return state

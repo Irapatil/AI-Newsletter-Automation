@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -63,6 +64,38 @@ class NewsletterStats(BaseModel):
     stories_selected: int = 0
 
 
+class AgentExecutionRecord(BaseModel):
+    """One LangGraph node's execution outcome for a single pipeline run.
+
+    Populated by the thin node wrappers in `app/graph/nodes.py` around each
+    agent's existing call - pure timing/counting instrumentation, no change
+    to what any agent actually does. Only successful node completions are
+    recorded here: a raising node's exception still propagates untouched
+    (so graph-level retry/error handling behaves exactly as before), and the
+    route handler surfaces that failure as a 502 rather than a partial
+    execution report.
+    """
+
+    node: str
+    status: Literal["success"] = "success"
+    execution_time_seconds: float
+    items_processed: int
+
+
+class TokenUsage(BaseModel):
+    """Best-effort token accounting for the LLM calls made during one run.
+
+    There is no real usage endpoint to query - this is a character-based
+    heuristic (~4 chars/token) computed from the actual generated content,
+    the same approach used for `estimated_cost_usd`. When the mock LLM
+    provider is active, `is_estimated` is still true because there is no
+    real token cost to report at all.
+    """
+
+    prompt_and_completion_tokens: int
+    is_estimated: bool = True
+
+
 class NewsletterOutput(BaseModel):
     """Final newsletter artifact returned by the API and persisted to history."""
 
@@ -73,3 +106,13 @@ class NewsletterOutput(BaseModel):
     json_payload: dict = Field(default_factory=dict)
     timestamp: datetime
     stats: NewsletterStats = Field(default_factory=NewsletterStats)
+    agent_execution: list[AgentExecutionRecord] = Field(default_factory=list)
+    execution_time_seconds: float = 0.0
+    provider: str = "mock"
+    run_status: Literal["success", "partial_success"] = "success"
+    sources_used: list[str] = Field(default_factory=list)
+    token_usage: TokenUsage = Field(
+        default_factory=lambda: TokenUsage(prompt_and_completion_tokens=0)
+    )
+    estimated_cost_usd: float = 0.0
+    errors: list[str] = Field(default_factory=list)

@@ -52,3 +52,18 @@ def hours_since(timestamp: datetime, now: datetime | None = None) -> float:
 
 def normalize_whitespace(text: str) -> str:
     return _WHITESPACE_RE.sub(" ", text).strip()
+
+
+def estimate_token_usage_and_cost(
+    texts: list[str], cost_per_million_tokens_usd: float
+) -> tuple[int, float]:
+    """Rough token/cost estimate (~4 chars/token) from generated text length.
+
+    There is no real usage/billing API to query here - both the mock and
+    real LLM providers report through this same heuristic, so the figure is
+    always labeled as an estimate rather than presented as authoritative.
+    """
+    total_chars = sum(len(t) for t in texts)
+    tokens = round(total_chars / 4)
+    cost = (tokens / 1_000_000) * cost_per_million_tokens_usd
+    return tokens, round(cost, 6)

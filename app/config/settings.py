@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     newsletter_history_dir: str = "data/history"
     max_article_age_hours: int = 48
     newsletter_max_total_articles: int = 24
+    llm_cost_per_million_tokens_usd: float = 2.5
 
     # HTTP
     http_timeout_seconds: int = 15

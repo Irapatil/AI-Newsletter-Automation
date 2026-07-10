@@ -95,6 +95,23 @@ async def test_full_pipeline_runs_end_to_end(monkeypatch: pytest.MonkeyPatch) ->
     assert final_state["newsletter_markdown"]
     assert final_state["newsletter_json"]
 
+    # agent_execution should carry one record per node that actually ran:
+    # Orchestrator + 8 collectors + Aggregator/Dedup/Ranking/Generator/Formatter.
+    expected_nodes = {
+        "Orchestrator",
+        *(agent_cls.display_name for agent_cls in COLLECTOR_AGENT_CLASSES),
+        "AggregatorAgent",
+        "DeduplicationAgent",
+        "RankingAgent",
+        "NewsletterGeneratorAgent",
+        "HTMLFormatterAgent",
+    }
+    recorded_nodes = {record.node for record in final_state["agent_execution"]}
+    assert recorded_nodes == expected_nodes
+    for record in final_state["agent_execution"]:
+        assert record.status == "success"
+        assert record.execution_time_seconds >= 0
+
 
 @pytest.mark.asyncio
 async def test_full_pipeline_takes_no_content_branch_when_nothing_survives(
@@ -117,3 +134,7 @@ async def test_full_pipeline_takes_no_content_branch_when_nothing_survives(
     assert content.sections == []
     assert final_state["newsletter_html"]
     assert "<html" in final_state["newsletter_html"].lower()
+
+    recorded_nodes = {record.node for record in final_state["agent_execution"]}
+    assert "NoContentFallback" in recorded_nodes
+    assert "NewsletterGeneratorAgent" not in recorded_nodes

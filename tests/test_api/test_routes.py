@@ -22,8 +22,11 @@ class _FakeCompiledGraph:
         return self._final_state
 
 
-def _canned_final_state() -> dict:
-    article = make_article(title="Test Article", url="https://example.com/1")
+def _canned_final_state(*, errors: list[str] | None = None) -> dict:
+    article = make_article(
+        title="Test Article", url="https://example.com/1", source="TechCrunch AI"
+    )
+    other_article = make_article(title="Other Article", url="https://example.com/2", source="arXiv")
     content = NewsletterContent(
         subject="Test Subject",
         executive_summary="Test summary.",
@@ -36,10 +39,24 @@ def _canned_final_state() -> dict:
         "newsletter_html": "<html>test</html>",
         "newsletter_markdown": "# Test",
         "newsletter_json": {"subject": "Test Subject"},
-        "errors": [],
-        "aggregated_articles": [article, article, article],
-        "deduplicated_articles": [article, article],
+        "errors": errors or [],
+        "aggregated_articles": [article, article, other_article],
+        "deduplicated_articles": [article, other_article],
         "ranked_news": [article],
+        "agent_execution": [
+            {
+                "node": "Orchestrator",
+                "status": "success",
+                "execution_time_seconds": 0.01,
+                "items_processed": 8,
+            },
+            {
+                "node": "RankingAgent",
+                "status": "success",
+                "execution_time_seconds": 0.02,
+                "items_processed": 1,
+            },
+        ],
     }
 
 
@@ -116,14 +133,42 @@ def test_generate_newsletter_returns_expected_payload(client: TestClient) -> Non
     body = response.json()
     assert body["subject"] == "Test Subject"
     assert body["summary"] == "Test summary."
-    assert body["html"] == "<html>test</html>"
-    assert body["json"] == {"subject": "Test Subject"}
-    assert body["stats"] == {
+    assert body["newsletter_html"] == "<html>test</html>"
+    assert body["newsletter_json"] == {"subject": "Test Subject"}
+    assert body["statistics"] == {
         "aggregated_count": 3,
         "duplicates_removed": 1,
         "ranked_count": 1,
         "stories_selected": 1,
     }
+    assert body["sources_used"] == ["TechCrunch AI", "arXiv"]
+    assert body["status"] == "success"
+    assert body["provider"] == "mock"
+    assert body["execution_time_seconds"] >= 0
+    assert body["token_usage"]["is_estimated"] is True
+    assert body["estimated_cost_usd"] >= 0
+    assert [rec["node"] for rec in body["agent_execution"]] == ["Orchestrator", "RankingAgent"]
+    assert body["errors"] == []
+
+
+def test_generate_newsletter_reports_partial_success_with_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEWSLETTER_HISTORY_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        routes_module,
+        "get_compiled_workflow",
+        lambda: _FakeCompiledGraph(
+            _canned_final_state(errors=["FundingAgent: failed after 12.0s"])
+        ),
+    )
+    with TestClient(app) as test_client:
+        response = test_client.post("/generate-newsletter", json={})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "partial_success"
+    assert body["errors"] == ["FundingAgent: failed after 12.0s"]
 
 
 def test_generate_newsletter_persists_to_history(client: TestClient) -> None:
@@ -140,6 +185,36 @@ def test_generate_newsletter_persists_to_history(client: TestClient) -> None:
 def test_newsletter_latest_404_when_none_generated(client: TestClient) -> None:
     response = client.get("/newsletter/latest")
     assert response.status_code == 404
+
+
+def test_newsletter_latest_html_returns_raw_html(client: TestClient) -> None:
+    client.post("/generate-newsletter", json={})
+    response = client.get("/newsletter/latest/html")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.text == "<html>test</html>"
+
+
+def test_newsletter_latest_html_404_when_none_generated(client: TestClient) -> None:
+    response = client.get("/newsletter/latest/html")
+    assert response.status_code == 404
+
+
+def test_demo_generate_returns_compact_payload(client: TestClient) -> None:
+    response = client.post("/demo/generate")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["subject"] == "Test Subject"
+    assert body["html_preview_url"] == "/newsletter/latest/html"
+    assert "newsletter_html" not in body
+    assert body["newsletter_markdown"] == "# Test"
+    assert body["statistics"]["aggregated_count"] == 3
+    assert [rec["node"] for rec in body["agent_execution"]] == ["Orchestrator", "RankingAgent"]
+
+    # The demo endpoint persists to history exactly like generate-newsletter.
+    html_response = client.get("/newsletter/latest/html")
+    assert html_response.status_code == 200
+    assert html_response.text == "<html>test</html>"
 
 
 def test_generate_newsletter_requires_api_key_when_configured(
