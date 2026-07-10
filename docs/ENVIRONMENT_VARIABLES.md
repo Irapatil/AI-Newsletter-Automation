@@ -74,6 +74,7 @@ article's ranking score.
 | `NEWSLETTER_HISTORY_DIR` | `data/history` | Filesystem directory for persisted newsletter JSON |
 | `MAX_ARTICLE_AGE_HOURS` | `48` | Articles older than this are dropped by every collector agent. Must be >= 1. |
 | `NEWSLETTER_MAX_TOTAL_ARTICLES` | `24` | Hard cap on total articles across all sections (keeps the newsletter ~2 pages) |
+| `LLM_COST_PER_MILLION_TOKENS_USD` | `2.5` | Blended rate used only to compute the response's `estimated_cost_usd` - a transparent, adjustable heuristic, not real OpenAI billing data. |
 
 ## HTTP / Networking
 

@@ -119,7 +119,7 @@ sequenceDiagram
     Fmt-->>WF: html, markdown, json
     WF-->>API: final_state
     API->>Hist: save_newsletter(output)
-    API-->>PA: 200 OK {subject, summary, html, markdown, json, timestamp}
+    API-->>PA: 200 OK {subject, summary, newsletter_html, newsletter_markdown, newsletter_json, statistics, agent_execution, ...}
     PA->>PA: Parse JSON -> Compose HTML -> Outlook Send Email
 ```
 
@@ -150,10 +150,24 @@ filters out stale articles (`MAX_ARTICLE_AGE_HOURS`), and logs timing.
 `GraphState` (`app/models/state.py`) is a `TypedDict` with one list field per
 collector category, plus pipeline fields (`aggregated_articles`,
 `deduplicated_articles`, `ranked_news`, `newsletter_content`,
-`newsletter_html`, `newsletter_markdown`, `newsletter_json`) and two
-observability fields, `execution_logs` and `errors`, both annotated with an
-`operator.add` reducer so LangGraph concatenates entries written
-concurrently by parallel branches instead of overwriting them.
+`newsletter_html`, `newsletter_markdown`, `newsletter_json`) and three
+observability fields - `execution_logs`, `errors`, and `agent_execution` -
+all annotated with an `operator.add` reducer so LangGraph concatenates
+entries written concurrently by parallel branches instead of overwriting
+them.
+
+## LangGraph Execution Report
+
+Every node function in `app/graph/nodes.py` is wrapped with a stopwatch that
+appends one `AgentExecutionRecord` (`node`, `status`, `execution_time_seconds`,
+`items_processed`) to `agent_execution` on successful completion - pure
+observability layered *around* each agent's existing call, not inside it.
+This is API-surfaced as `agent_execution` in the `POST /generate-newsletter`
+/ `POST /demo/generate` responses (see [`API.md`](API.md)), giving a
+node-by-node execution report for every run without any change to routing,
+retry behavior, or agent logic: a node that raises still propagates its
+exception exactly as before (no record is added for it), so this
+instrumentation can never mask a real failure.
 
 ## Deduplication
 

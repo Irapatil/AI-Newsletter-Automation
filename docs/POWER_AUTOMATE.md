@@ -54,7 +54,9 @@ settings so it does not appear in run history logs.
 1. Add action **Parse JSON**.
 2. **Content**: `Body` (output of the HTTP action).
 3. **Schema** — generate from a sample payload (run the HTTP action once and
-   use *"Use sample payload to generate schema"*), or paste directly:
+   use *"Use sample payload to generate schema"* — Swagger's example for
+   `POST /generate-newsletter` at `/docs` works directly as a sample), or
+   paste directly:
 
 ```json
 {
@@ -62,10 +64,44 @@ settings so it does not appear in run history logs.
   "properties": {
     "subject": { "type": "string" },
     "summary": { "type": "string" },
-    "html": { "type": "string" },
-    "markdown": { "type": "string" },
-    "json": { "type": "object" },
-    "timestamp": { "type": "string" }
+    "generated_at": { "type": "string" },
+    "execution_time_seconds": { "type": "number" },
+    "newsletter_html": { "type": "string" },
+    "newsletter_markdown": { "type": "string" },
+    "newsletter_json": { "type": "object" },
+    "statistics": {
+      "type": "object",
+      "properties": {
+        "aggregated_count": { "type": "integer" },
+        "duplicates_removed": { "type": "integer" },
+        "ranked_count": { "type": "integer" },
+        "stories_selected": { "type": "integer" }
+      }
+    },
+    "sources_used": { "type": "array", "items": { "type": "string" } },
+    "agent_execution": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": { "type": "string" },
+          "status": { "type": "string" },
+          "execution_time_seconds": { "type": "number" },
+          "items_processed": { "type": "integer" }
+        }
+      }
+    },
+    "provider": { "type": "string" },
+    "status": { "type": "string" },
+    "token_usage": {
+      "type": "object",
+      "properties": {
+        "prompt_and_completion_tokens": { "type": "integer" },
+        "is_estimated": { "type": "boolean" }
+      }
+    },
+    "estimated_cost_usd": { "type": "number" },
+    "errors": { "type": "array", "items": { "type": "string" } }
   }
 }
 ```
@@ -74,7 +110,7 @@ settings so it does not appear in run history logs.
 
 ## Step 4 - Compose (HTML body)
 
-Add action **Compose**, **Inputs**: `body('Parse_JSON')?['html']`.
+Add action **Compose**, **Inputs**: `body('Parse_JSON')?['newsletter_html']`.
 
 This step is optional (you can reference the Parse JSON output directly in
 the Outlook action), but keeping it separate makes the flow easier to debug
@@ -85,8 +121,13 @@ the Outlook action), but keeping it separate makes the flow easier to debug
 1. Add action **Outlook: Send an email (V2)**.
 2. **To**: your distribution list (e.g. `ai-newsletter@yourcompany.com`).
 3. **Subject**: `body('Parse_JSON')?['subject']`.
-4. **Body**: `outputs('Compose')` (or `body('Parse_JSON')?['html']` directly).
+4. **Body**: `outputs('Compose')` (or `body('Parse_JSON')?['newsletter_html']` directly).
 5. **Is HTML**: `Yes`.
+
+Optionally, add a condition checking
+`body('Parse_JSON')?['status']` equals `partial_success` to CC an ops
+mailbox or append a note when one or more collectors failed but a
+newsletter still went out.
 
 > `docs/images/power-automate-outlook-send.png` — *(screenshot placeholder: Outlook Send an email action)*
 
@@ -99,11 +140,11 @@ store:
 2. **Site Address**: your SharePoint site.
 3. **Folder Path**: e.g. `/Shared Documents/AI Newsletters`.
 4. **File Name**: `@{formatDateTime(utcNow(), 'yyyy-MM-dd')}-ai-newsletter.html`
-5. **File Content**: `body('Parse_JSON')?['html']`.
+5. **File Content**: `body('Parse_JSON')?['newsletter_html']`.
 
 You can add a second **Create file** action for
-`body('Parse_JSON')?['markdown']` if you also want a Markdown archive
-(useful for pasting into Teams/Confluence/Notion).
+`body('Parse_JSON')?['newsletter_markdown']` if you also want a Markdown
+archive (useful for pasting into Teams/Confluence/Notion).
 
 > `docs/images/power-automate-sharepoint-archive.png` — *(screenshot placeholder: SharePoint Create file action)*
 

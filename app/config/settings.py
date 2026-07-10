@@ -103,6 +103,13 @@ class Settings(BaseSettings):
             raise ValueError(f"{info.field_name} must be >= 1")
         return value
 
+    @field_validator("llm_cost_per_million_tokens_usd")
+    @classmethod
+    def _validate_non_negative_cost_rate(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("llm_cost_per_million_tokens_usd must be >= 0")
+        return value
+
     @model_validator(mode="after")
     def _validate_ranking_weights_sum(self) -> Settings:
         total = sum(self.ranking_weights.values())

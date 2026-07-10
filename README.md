@@ -6,6 +6,10 @@ Enterprise multi-agent AI newsletter platform built with **LangGraph**,
 categorizes, deduplicates, ranks, summarizes, and formats AI industry news
 into an executive-ready newsletter — with zero manual steps.
 
+**This is a backend engineering showcase.** The entire demonstration runs
+through FastAPI's Swagger UI - no frontend, no build step. See
+[`DEMO.md`](DEMO.md) for the full interview walkthrough.
+
 [![CI](https://github.com/Irapatil/AI-Newsletter-Automation/actions/workflows/ci.yml/badge.svg)](https://github.com/Irapatil/AI-Newsletter-Automation/actions/workflows/ci.yml)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com/)
@@ -14,24 +18,26 @@ into an executive-ready newsletter — with zero manual steps.
 
 ## Table of Contents
 
-- [Business Problem](#business-problem)
+- [Problem Statement](#problem-statement)
 - [Solution](#solution)
 - [Architecture](#architecture)
+- [LangGraph Workflow](#langgraph-workflow)
 - [Technology Stack](#technology-stack)
 - [Folder Structure](#folder-structure)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [API Usage](#api-usage)
-- [Frontend Dashboard](#frontend-dashboard)
-- [Running with Docker](#running-with-docker)
+- [Running Locally](#running-locally)
+- [Environment Variables](#environment-variables)
+- [FastAPI APIs](#fastapi-apis)
+- [Swagger](#swagger)
 - [Power Automate Integration](#power-automate-integration)
+- [Outlook Integration](#outlook-integration)
+- [Docker](#docker)
 - [Testing & Code Quality](#testing--code-quality)
 - [Documentation](#documentation)
 - [Future Enhancements](#future-enhancements)
 - [Screenshots](#screenshots)
 - [License](#license)
 
-## Business Problem
+## Problem Statement
 
 Staying current on AI industry news — model releases, funding, research,
 hiring trends, open-source activity, and regulation — is a full-time job in
@@ -57,6 +63,11 @@ model releases, then:
 6. **Serves** it over a FastAPI endpoint that Power Automate calls daily and
    pipes straight into an Outlook "Send an email" action.
 
+Every response also carries a **full LangGraph execution report** - one
+entry per node with its status, timing, and items processed - plus
+pipeline statistics, sources used, and an estimated token/cost figure. See
+[`DEMO.md`](DEMO.md) for what this looks like in practice.
+
 Every external dependency (LLM, news APIs, job boards, funding data) has a
 mock or free fallback, so the entire pipeline runs and is fully testable
 **before you add a single API key**.
@@ -73,7 +84,7 @@ flowchart LR
     RANK --> GEN[Newsletter Generator<br/>GPT summaries]
     GEN --> FMT[HTML Formatter]
     FMT --> API
-    API -->|JSON: html/markdown/json| PA
+    API -->|JSON: newsletter_html/markdown/json + execution report| PA
     PA --> OUTLOOK[Outlook: Send Email]
 ```
 
@@ -82,13 +93,28 @@ sequence diagram, and a breakdown of the ranking/deduplication algorithms —
 and why this is built on LangGraph rather than a conversational-agent
 framework like AutoGen.
 
+## LangGraph Workflow
+
+```
+START → Orchestrator → [8 parallel collector agents] → Aggregator
+      → Semantic Deduplication → Ranking
+      → (conditional) Newsletter Generator | NoContentFallback
+      → HTML Formatter → END
+```
+
+Every node is instrumented with a stopwatch that reports its `status`,
+`execution_time_seconds`, and `items_processed` - surfaced directly in the
+API response as `agent_execution` (see [`docs/API.md`](docs/API.md) and
+[`DEMO.md`](DEMO.md)). This is pure observability added around each agent's
+existing call; no routing, retry behavior, or agent logic changed to add it.
+
 ## Technology Stack
 
 | Layer | Technology |
 |---|---|
 | Orchestration | LangGraph (`StateGraph`, parallel fan-out/fan-in, conditional edges, retry policies) |
 | LLM | OpenAI / Azure OpenAI via LangChain, with a deterministic offline mock provider |
-| API | FastAPI + Pydantic v2 |
+| API | FastAPI + Pydantic v2, fully documented OpenAPI/Swagger schema |
 | News collection | `feedparser` (RSS/Atom), `httpx` (async HTTP), `BeautifulSoup4` |
 | Sources | Google News RSS, arXiv API, GitHub Search API, Hugging Face Hub API, Greenhouse/Lever job board APIs, NewsAPI.org, Crunchbase API v4 |
 | Rendering | Jinja2 (HTML email template), custom Markdown builder |
@@ -114,7 +140,7 @@ app/
 
 Full breakdown: [`docs/FOLDER_STRUCTURE.md`](docs/FOLDER_STRUCTURE.md).
 
-## Installation
+## Running Locally
 
 ```bash
 git clone https://github.com/Irapatil/AI-Newsletter-Automation.git
@@ -130,11 +156,19 @@ cp .env.example .env
 Run it immediately — no API keys required (mock LLM + free/fallback sources):
 
 ```bash
-make dev
+uvicorn app.main:app --reload
 # -> http://localhost:8000/docs
 ```
 
-## Configuration
+(or `make dev`, equivalent). Then follow the [5-minute demo in `DEMO.md`](DEMO.md).
+
+Prefer not to stand up the API at all? Run the pipeline directly:
+
+```bash
+python scripts/generate_newsletter_cli.py --output-dir newsletter_output
+```
+
+## Environment Variables
 
 All configuration is via environment variables (`.env`). Every field has a
 safe default; see [`docs/ENVIRONMENT_VARIABLES.md`](docs/ENVIRONMENT_VARIABLES.md)
@@ -154,7 +188,17 @@ NEWSAPI_API_KEY=
 CRUNCHBASE_API_KEY=
 ```
 
-## API Usage
+## FastAPI APIs
+
+| Endpoint | Tag | Purpose |
+|---|---|---|
+| `GET /` | System | Service identity |
+| `GET /health` | Health | Liveness + per-integration config status |
+| `POST /generate-newsletter` | Newsletter | Run the full pipeline (Power Automate's integration point) |
+| `GET /newsletter/latest` | Newsletter | Re-read the latest edition as JSON |
+| `GET /newsletter/latest/html` | Newsletter | **Open in a browser** for the rendered HTML newsletter |
+| `GET /newsletter/history` | Newsletter | List past editions (metadata only) |
+| `POST /demo/generate` | Demo | Same pipeline, compact response - built for live walkthroughs |
 
 ```bash
 # Trigger a full pipeline run
@@ -163,57 +207,25 @@ curl -X POST http://localhost:8000/generate-newsletter \
   -H "X-API-Key: $API_AUTH_TOKEN" \
   -d '{}'
 
-# Fetch the most recent newsletter
-curl http://localhost:8000/newsletter/latest -H "X-API-Key: $API_AUTH_TOKEN"
+# Compact demo response + link to the rendered HTML
+curl -X POST http://localhost:8000/demo/generate -H "X-API-Key: $API_AUTH_TOKEN"
 
-# Fetch generation history
-curl http://localhost:8000/newsletter/history -H "X-API-Key: $API_AUTH_TOKEN"
+# Open the rendered newsletter directly
+open http://localhost:8000/newsletter/latest/html
 ```
 
-Full endpoint reference (request/response schemas, error codes):
-[`docs/API.md`](docs/API.md). Interactive docs at `/docs` while the app is running.
+Full endpoint reference (every field explained, realistic examples,
+error codes): [`docs/API.md`](docs/API.md).
 
-Prefer not to stand up the API at all? Run the pipeline directly:
+## Swagger
 
-```bash
-python scripts/generate_newsletter_cli.py --output-dir newsletter_output
-```
-
-## Frontend Dashboard
-
-An enterprise-styled React/TypeScript dashboard lives in
-[`frontend/`](frontend/) — a Microsoft Copilot-style console for demoing the
-pipeline: a Dashboard (system status), Generate Newsletter (with a simulated
-agent-by-agent progress view — the backend has no SSE/WebSocket streaming
-today, so this is a client-side simulation that snaps to the true result the
-moment the API actually responds), the rendered Newsletter with execution
-metrics and download/copy actions, History, and Health.
-
-```bash
-cd frontend
-npm install
-cp .env.example .env   # set VITE_API_KEY to match API_AUTH_TOKEN if auth is enabled
-npm run dev
-```
-
-See [`frontend/README.md`](frontend/README.md) for details. Two backend
-endpoints gained small, additive, backward-compatible fields to support it
-(`GET /health`'s `providers` breakdown, `POST /generate-newsletter`'s
-`stats` object) — no LangGraph, agent, or business-logic changes. The
-backend also now allows CORS from the frontend's dev-server origin by
-default (`CORS_ALLOWED_ORIGINS`, see Configuration above).
-
-## Running with Docker
-
-```bash
-cp .env.example .env
-make docker-build
-make docker-up
-make docker-logs
-```
-
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for cloud deployment patterns
-(Azure Container Apps, ECS, Kubernetes) and secrets guidance.
+Interactive docs are served at `/docs` (Swagger UI) and `/redoc` in
+`development`/`staging` (disabled in `production`). Every request/response
+model carries a realistic, populated example - visible in Swagger's
+"Example Value" tab without needing to execute a request first. Endpoints
+are grouped into four tags: **System**, **Health**, **Newsletter**, **Demo**.
+This is the primary demo surface for this project - see
+[`DEMO.md`](DEMO.md) for the full walkthrough.
 
 ## Power Automate Integration
 
@@ -226,10 +238,31 @@ Full step-by-step flow setup, with the exact JSON schema for the Parse JSON
 step and screenshot placeholders for each action:
 [`docs/POWER_AUTOMATE.md`](docs/POWER_AUTOMATE.md).
 
+## Outlook Integration
+
+The Power Automate flow's final step is Outlook's **Send an email (V2)**
+action, fed directly from `newsletter_html` (no transformation needed - it's
+already a complete, professionally-styled HTML document with inline CSS
+for email-client compatibility). If you don't have a live Power Automate
+environment handy, `GET /newsletter/latest/html` in a browser renders the
+identical HTML Outlook would send.
+
+## Docker
+
+```bash
+cp .env.example .env
+make docker-build
+make docker-up
+make docker-logs
+```
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for cloud deployment patterns
+(Azure Container Apps, ECS, Kubernetes) and secrets guidance.
+
 ## Testing & Code Quality
 
 ```bash
-make test        # pytest, 138 tests (including an end-to-end LangGraph run), all external calls mocked (respx / MockLLMService)
+make test        # pytest, 146 tests (including an end-to-end LangGraph run), all external calls mocked (respx / MockLLMService)
 make lint         # ruff + isort --check + black --check
 make format       # ruff --fix + isort + black
 make typecheck    # mypy
@@ -245,10 +278,11 @@ steps on every push and pull request to `main`.
 
 | Doc | Contents |
 |---|---|
+| [`DEMO.md`](DEMO.md) | **Start here** - the full interview demo walkthrough |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Agent graph, sequence diagram, dedup/ranking algorithms |
-| [`docs/API.md`](docs/API.md) | Endpoint reference, auth, error codes |
+| [`docs/API.md`](docs/API.md) | Endpoint reference, auth, error codes, every response field explained |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Local, Docker, and cloud deployment |
-| [`docs/POWER_AUTOMATE.md`](docs/POWER_AUTOMATE.md) | Step-by-step Power Automate flow |
+| [`docs/POWER_AUTOMATE.md`](docs/POWER_AUTOMATE.md) | Step-by-step Power Automate flow + exact Parse JSON schema |
 | [`docs/ENVIRONMENT_VARIABLES.md`](docs/ENVIRONMENT_VARIABLES.md) | Full env var reference |
 | [`docs/FOLDER_STRUCTURE.md`](docs/FOLDER_STRUCTURE.md) | Full repository layout |
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Common issues and fixes |
@@ -258,17 +292,34 @@ steps on every push and pull request to `main`.
 
 Per-recipient personalization, LangGraph checkpointing for resumable runs,
 a real LinkedIn Talent API integration, database-backed history for
-multi-instance deployments, and multi-language newsletters. Full list:
+multi-instance deployments, real (non-heuristic) token/cost accounting via
+provider usage APIs, and multi-language newsletters. Full list:
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Screenshots
 
 > `docs/images/newsletter-html-preview.png` — *(placeholder: rendered HTML newsletter)*
 >
-> `docs/images/swagger-ui.png` — *(placeholder: FastAPI `/docs` Swagger UI)*
+> `docs/images/swagger-ui.png` — *(placeholder: FastAPI `/docs` Swagger UI, showing `POST /demo/generate`'s example response)*
 >
 > `docs/images/power-automate-flow-overview.png` — *(placeholder: end-to-end Power Automate flow canvas)*
 
 ## License
 
 [MIT](LICENSE) © 2026 Irapatil
+
+---
+
+<details>
+<summary><strong>Appendix: optional React frontend (not part of the interview demo)</strong></summary>
+
+An earlier iteration of this project also includes a React/TypeScript
+dashboard in [`frontend/`](frontend/). It is **not required or used** for
+the demo described above - the demo is Swagger-only by design - but is left
+in the repository as a secondary artifact. It has not been updated for the
+`agent_execution`/`statistics`/`provider`/`token_usage` response fields
+added since it was built, so treat it as unmaintained if you choose to run
+it. See [`frontend/README.md`](frontend/README.md) for its own setup
+instructions.
+
+</details>
