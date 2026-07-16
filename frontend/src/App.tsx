@@ -5,11 +5,9 @@ import { AppShell } from "@/components/layout/AppShell";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { queryClient } from "@/lib/queryClient";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { DashboardPage } from "@/pages/DashboardPage";
-import { GeneratePage } from "@/pages/GeneratePage";
-import { NewsletterPage } from "@/pages/NewsletterPage";
-import { HistoryPage } from "@/pages/HistoryPage";
-import { HealthPage } from "@/pages/HealthPage";
+import { HomePage } from "@/pages/HomePage";
+import { PowerAutomatePage } from "@/pages/PowerAutomatePage";
+import { AboutPage } from "@/pages/AboutPage";
 
 export default function App() {
   return (
@@ -19,11 +17,9 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route element={<AppShell />}>
-                <Route index element={<DashboardPage />} />
-                <Route path="generate" element={<GeneratePage />} />
-                <Route path="newsletter" element={<NewsletterPage />} />
-                <Route path="history" element={<HistoryPage />} />
-                <Route path="health" element={<HealthPage />} />
+                <Route index element={<HomePage />} />
+                <Route path="power-automate" element={<PowerAutomatePage />} />
+                <Route path="about" element={<AboutPage />} />
               </Route>
             </Routes>
           </BrowserRouter>

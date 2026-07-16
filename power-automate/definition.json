@@ -1,0 +1,204 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "ApiBaseUrl": {
+      "defaultValue": "https://<your-deployed-host>",
+      "type": "String"
+    },
+    "ApiAuthToken": {
+      "defaultValue": "",
+      "type": "SecureString"
+    },
+    "DistributionList": {
+      "defaultValue": "ai-newsletter@yourcompany.com",
+      "type": "String"
+    },
+    "OpsMailbox": {
+      "defaultValue": "ops@yourcompany.com",
+      "type": "String"
+    }
+  },
+  "triggers": {
+    "Recurrence": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "schedule": {
+          "hours": ["8"],
+          "minutes": [0]
+        },
+        "timeZone": "UTC"
+      }
+    }
+  },
+  "actions": {
+    "HTTP_-_Generate_newsletter": {
+      "type": "Http",
+      "runAfter": {},
+      "inputs": {
+        "method": "POST",
+        "uri": "@{parameters('ApiBaseUrl')}/generate-newsletter",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "@{parameters('ApiAuthToken')}"
+        },
+        "body": {
+          "requested_by": "power-automate-daily-trigger"
+        },
+        "retryPolicy": {
+          "type": "exponential",
+          "count": 4,
+          "interval": "PT10S"
+        }
+      },
+      "runtimeConfiguration": {
+        "secureData": {
+          "properties": ["inputs"]
+        }
+      }
+    },
+    "Parse_JSON": {
+      "type": "ParseJson",
+      "runAfter": {
+        "HTTP_-_Generate_newsletter": ["Succeeded"]
+      },
+      "inputs": {
+        "content": "@body('HTTP_-_Generate_newsletter')",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "subject": { "type": "string" },
+            "summary": { "type": "string" },
+            "generated_at": { "type": "string" },
+            "execution_time_seconds": { "type": "number" },
+            "newsletter_html": { "type": "string" },
+            "newsletter_markdown": { "type": "string" },
+            "newsletter_json": { "type": "object" },
+            "statistics": {
+              "type": "object",
+              "properties": {
+                "aggregated_count": { "type": "integer" },
+                "duplicates_removed": { "type": "integer" },
+                "ranked_count": { "type": "integer" },
+                "stories_selected": { "type": "integer" }
+              }
+            },
+            "sources_used": { "type": "array", "items": { "type": "string" } },
+            "agent_execution": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "node": { "type": "string" },
+                  "status": { "type": "string" },
+                  "execution_time_seconds": { "type": "number" },
+                  "items_processed": { "type": "integer" }
+                }
+              }
+            },
+            "provider": { "type": "string" },
+            "status": { "type": "string" },
+            "token_usage": {
+              "type": "object",
+              "properties": {
+                "prompt_and_completion_tokens": { "type": "integer" },
+                "is_estimated": { "type": "boolean" }
+              }
+            },
+            "estimated_cost_usd": { "type": "number" },
+            "errors": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "Compose_-_HTML_body": {
+      "type": "Compose",
+      "runAfter": {
+        "Parse_JSON": ["Succeeded"]
+      },
+      "inputs": "@body('Parse_JSON')?['newsletter_html']"
+    },
+    "Outlook_-_Send_an_email_V2": {
+      "type": "OpenApiConnection",
+      "runAfter": {
+        "Compose_-_HTML_body": ["Succeeded"]
+      },
+      "inputs": {
+        "host": {
+          "connectionName": "shared_office365",
+          "operationId": "SendEmailV2",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+        },
+        "parameters": {
+          "emailMessage/To": "@parameters('DistributionList')",
+          "emailMessage/Subject": "@body('Parse_JSON')?['subject']",
+          "emailMessage/Body": "@outputs('Compose_-_HTML_body')",
+          "emailMessage/IsHtml": true
+        }
+      }
+    },
+    "HTTP_-_Report_delivered": {
+      "type": "Http",
+      "runAfter": {
+        "Outlook_-_Send_an_email_V2": ["Succeeded"]
+      },
+      "inputs": {
+        "method": "POST",
+        "uri": "@{parameters('ApiBaseUrl')}/integration/outlook/status",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "@{parameters('ApiAuthToken')}"
+        },
+        "body": {
+          "status": "delivered",
+          "timestamp": "@{utcNow()}",
+          "message_id": "@{workflow().run.name}"
+        }
+      }
+    },
+    "HTTP_-_Report_failed": {
+      "type": "Http",
+      "runAfter": {
+        "Outlook_-_Send_an_email_V2": ["Failed", "TimedOut", "Skipped"]
+      },
+      "inputs": {
+        "method": "POST",
+        "uri": "@{parameters('ApiBaseUrl')}/integration/outlook/status",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "@{parameters('ApiAuthToken')}"
+        },
+        "body": {
+          "status": "failed",
+          "timestamp": "@{utcNow()}"
+        }
+      }
+    },
+    "Outlook_-_Notify_ops_on_failure": {
+      "type": "OpenApiConnection",
+      "runAfter": {
+        "Outlook_-_Send_an_email_V2": ["Failed", "TimedOut", "Skipped"]
+      },
+      "inputs": {
+        "host": {
+          "connectionName": "shared_office365",
+          "operationId": "SendEmailV2",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+        },
+        "parameters": {
+          "emailMessage/To": "@parameters('OpsMailbox')",
+          "emailMessage/Subject": "AI Newsletter: Outlook delivery failed",
+          "emailMessage/Body": "The scheduled AI Newsletter Outlook delivery failed. Check this flow's run history for details.",
+          "emailMessage/IsHtml": false
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

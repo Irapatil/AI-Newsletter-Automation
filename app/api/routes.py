@@ -1,6 +1,6 @@
 """HTTP routes exposed by the AI Newsletter Automation API.
 
-Endpoints are grouped into four Swagger tags:
+Endpoints are grouped into five Swagger tags:
 
 - **System** - service metadata (`GET /`).
 - **Health** - liveness + per-integration configuration status (`GET /health`).
@@ -11,6 +11,9 @@ Endpoints are grouped into four Swagger tags:
 - **Demo** - a Swagger-friendly companion endpoint for live walkthroughs
   (`POST /demo/generate`), returning a smaller payload plus a link to the
   HTML preview instead of embedding the full HTML inline.
+- **Integration** - real Outlook delivery status, reported by Power Automate
+  (`POST /integration/outlook/status`) and polled by the frontend
+  (`GET /integration/outlook/status`).
 """
 
 from __future__ import annotations
@@ -33,11 +36,13 @@ from app.models.api_models import (
     HealthResponse,
     NewsletterHistoryResponse,
     NewsletterResponse,
+    OutlookDeliveryStatus,
+    OutlookDeliveryStatusUpdate,
     RootResponse,
 )
 from app.models.newsletter import NewsletterOutput, NewsletterStats, TokenUsage
 from app.models.state import build_initial_state
-from app.services import history_service
+from app.services import history_service, outlook_status_service
 from app.utils.text_utils import estimate_token_usage_and_cost
 
 logger = get_logger(__name__)
@@ -321,7 +326,27 @@ async def newsletter_latest_html() -> HTMLResponse:
     "/newsletter/history",
     response_model=NewsletterHistoryResponse,
     dependencies=[Depends(verify_api_key)],
-    responses={401: {"model": ErrorResponse}},
+    responses={
+        401: {"model": ErrorResponse},
+        422: {
+            "description": "`limit` is out of range (must be between 1 and 100). "
+            "FastAPI's standard validation-error shape - not `ErrorResponse`.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": [
+                            {
+                                "type": "less_than_equal",
+                                "loc": ["query", "limit"],
+                                "msg": "Input should be less than or equal to 100",
+                                "input": "500",
+                            }
+                        ]
+                    }
+                }
+            },
+        },
+    },
     tags=["Newsletter"],
     summary="List previously generated newsletters",
     description="Returns metadata (id, subject, timestamp) for past editions, newest first. "
@@ -330,7 +355,11 @@ async def newsletter_latest_html() -> HTMLResponse:
 )
 async def newsletter_history(
     limit: int = Query(
-        default=20, ge=1, le=100, description="Maximum number of editions to return."
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum number of editions to return.",
+        examples=[20],
     ),
 ) -> NewsletterHistoryResponse:
     items = history_service.list_history(limit=limit)
@@ -346,7 +375,7 @@ async def newsletter_history(
         502: {"model": ErrorResponse},
     },
     tags=["Demo"],
-    summary="Interview-demo companion: generate a newsletter and return a compact report",
+    summary="Swagger-friendly companion: generate a newsletter and return a compact report",
     description=(
         "Functionally identical pipeline run to `POST /generate-newsletter` "
         "(same LangGraph workflow, same persistence to history), but returns "
@@ -375,3 +404,50 @@ async def demo_generate() -> DemoGenerateResponse:
         html_preview_url="/newsletter/latest/html",
         errors=output.errors,
     )
+
+
+@router.post(
+    "/integration/outlook/status",
+    response_model=OutlookDeliveryStatus,
+    dependencies=[Depends(verify_api_key)],
+    responses={401: {"model": ErrorResponse}},
+    tags=["Integration"],
+    summary="Record the outcome of a Power Automate Outlook send",
+    description=(
+        "Called by the Power Automate flow immediately after its "
+        '"Send an email (V2)" action completes, reporting real delivery '
+        "status back to this API - see docs/POWER_AUTOMATE.md for the exact "
+        "flow action configuration. The status this stores is what "
+        "`GET /integration/outlook/status` (polled by the frontend) reads "
+        "back; there is no mocked or simulated delivery state."
+    ),
+)
+async def update_outlook_delivery_status(
+    payload: OutlookDeliveryStatusUpdate,
+) -> OutlookDeliveryStatus:
+    status_record = OutlookDeliveryStatus(
+        delivery_status=payload.status,
+        last_delivery_time=payload.timestamp,
+        message_id=payload.message_id,
+        recipient_count=payload.recipient_count,
+    )
+    outlook_status_service.save_status(status_record)
+    return status_record
+
+
+@router.get(
+    "/integration/outlook/status",
+    response_model=OutlookDeliveryStatus,
+    tags=["Integration"],
+    summary="Current Outlook delivery status",
+    description=(
+        "Returns the most recent delivery status reported by Power Automate "
+        'via `POST /integration/outlook/status`. Defaults to `"pending"` '
+        "with no timestamp/message id until the first real callback arrives "
+        "- this is the call-free, always-public status the frontend polls "
+        "every 30 seconds to show real Outlook delivery state instead of a "
+        "hardcoded label."
+    ),
+)
+async def get_outlook_delivery_status() -> OutlookDeliveryStatus:
+    return outlook_status_service.load_status()

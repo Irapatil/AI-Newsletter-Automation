@@ -1,9 +1,10 @@
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from "axios";
 import type {
-  GenerateNewsletterRequest,
+  DemoGenerateResponse,
   HealthResponse,
   NewsletterHistoryResponse,
   NewsletterResponse,
+  OutlookDeliveryStatus,
   RootResponse,
 } from "@/types/api";
 
@@ -45,7 +46,7 @@ function toApiError(error: unknown): ApiError {
     }
     if (status === 502) {
       return new ApiError(
-        detail ?? "The newsletter pipeline failed to run. Check the backend logs.",
+        detail ?? "The LangGraph pipeline failed to run. Check the backend logs.",
         status,
         detail,
       );
@@ -65,12 +66,7 @@ function toApiError(error: unknown): ApiError {
   return new ApiError(error instanceof Error ? error.message : "Unknown error occurred.");
 }
 
-/**
- * Retries idempotent GET requests with exponential backoff on network errors
- * or 5xx responses. POST /generate-newsletter is intentionally NOT
- * auto-retried here (it's an expensive, non-idempotent-cheap operation) —
- * the Generate page instead surfaces a manual "Retry" action on failure.
- */
+/** Retries idempotent GET requests with exponential backoff on network errors or 5xx. */
 async function getWithRetry<T>(
   url: string,
   config?: AxiosRequestConfig,
@@ -93,6 +89,12 @@ async function getWithRetry<T>(
   throw toApiError(lastError);
 }
 
+/**
+ * Client for the six read-only/demo endpoints the Copilot UI is scoped to
+ * (see AI Newsletter Automation's Swagger docs). `POST /generate-newsletter`
+ * — the Power Automate production trigger — is intentionally not called
+ * from this frontend; the UI only drives the Swagger-friendly demo path.
+ */
 export const api = {
   baseUrl: BASE_URL,
   hasApiKey: Boolean(API_KEY),
@@ -105,12 +107,9 @@ export const api = {
     return getWithRetry<HealthResponse>("/health");
   },
 
-  async generateNewsletter(payload?: GenerateNewsletterRequest): Promise<NewsletterResponse> {
+  async demoGenerate(): Promise<DemoGenerateResponse> {
     try {
-      const response = await client.post<NewsletterResponse>(
-        "/generate-newsletter",
-        payload ?? {},
-      );
+      const response = await client.post<DemoGenerateResponse>("/demo/generate", {});
       return response.data;
     } catch (error) {
       throw toApiError(error);
@@ -121,7 +120,23 @@ export const api = {
     return getWithRetry<NewsletterResponse>("/newsletter/latest");
   },
 
+  async getLatestNewsletterHtml(): Promise<string> {
+    try {
+      const response = await client.get<string>("/newsletter/latest/html", {
+        responseType: "text",
+      });
+      return response.data;
+    } catch (error) {
+      throw toApiError(error);
+    }
+  },
+
   async getHistory(limit = 20): Promise<NewsletterHistoryResponse> {
     return getWithRetry<NewsletterHistoryResponse>("/newsletter/history", { params: { limit } });
+  },
+
+  /** Real Outlook delivery status, as last reported by Power Automate - never mocked. */
+  async getOutlookDeliveryStatus(): Promise<OutlookDeliveryStatus> {
+    return getWithRetry<OutlookDeliveryStatus>("/integration/outlook/status");
   },
 };

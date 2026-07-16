@@ -4,26 +4,30 @@ Base URL (local): `http://localhost:8000`. Interactive OpenAPI docs are
 served at `/docs` (Swagger UI) and `/redoc` in `development`/`staging`; both
 (along with `/openapi.json`) are disabled when `APP_ENV=production`.
 
-Endpoints are grouped into four Swagger tags: **System**, **Health**,
-**Newsletter**, and **Demo**. Every response model below carries a
-realistic example, visible directly in Swagger's "Example Value" tab for
-each endpoint - no need to actually run a request to see the expected
-shape.
+Endpoints are grouped into five Swagger tags: **System**, **Health**,
+**Newsletter**, **Demo**, and **Integration**. Every response model below
+carries a realistic example, visible directly in Swagger's "Example Value"
+tab for each endpoint - no need to actually run a request to see the
+expected shape.
 
 ## Authentication
 
 `POST /generate-newsletter`, `GET /newsletter/latest`,
 `GET /newsletter/latest/html`, `GET /newsletter/history`, and
 `POST /demo/generate` are protected by an `X-API-Key` header, checked
-against the `API_AUTH_TOKEN` environment variable.
+against the `API_AUTH_TOKEN` environment variable - **but only when
+`APP_ENV=production`.**
 
-- If `API_AUTH_TOKEN` is **unset** (the default), auth is skipped entirely -
-  convenient for local development, CI, and interview demos. This is only
-  permitted when `APP_ENV` is `development` or `staging`; the app refuses to
-  start with `APP_ENV=production` and an empty `API_AUTH_TOKEN`.
-- If it **is** set, every request to a protected route must send
+- When `APP_ENV` is `development` or `staging`, auth is skipped entirely
+  regardless of whether `API_AUTH_TOKEN` is set - convenient for local
+  development, CI, Swagger's "Try it out" (which doesn't pre-fill custom
+  headers), and interview demos. A leftover `API_AUTH_TOKEN` in a local
+  `.env` never blocks a dev/demo run.
+- When `APP_ENV=production`, every request to a protected route must send
   `X-API-Key: <API_AUTH_TOKEN>` or receive `401 Unauthorized`. The comparison
-  is constant-time (`secrets.compare_digest`).
+  is constant-time (`secrets.compare_digest`). `Settings` refuses to start
+  with `APP_ENV=production` and an empty `API_AUTH_TOKEN`, so production
+  always has a real token configured to check against.
 
 `GET /` and `GET /health` are always public (used for infra health checks).
 
@@ -201,7 +205,7 @@ Runs the exact same LangGraph pipeline as `POST /generate-newsletter` (same
 persistence to history), but returns a smaller, Swagger-friendly payload:
 everything from the full response **except** `newsletter_html` and
 `newsletter_json` (the large payloads), plus an `html_preview_url` pointing
-at `GET /newsletter/latest/html`. Built for live interview walkthroughs -
+at `GET /newsletter/latest/html`. Built for live walkthroughs -
 `POST /generate-newsletter` remains the integration point for Power
 Automate.
 
@@ -223,11 +227,54 @@ Automate.
 }
 ```
 
+### `POST /integration/outlook/status` — Integration
+
+Called by the Power Automate flow immediately after its "Send an email
+(V2)" action completes (or fails) - see
+[`POWER_AUTOMATE.md`](POWER_AUTOMATE.md#step-6---callback-report-delivery-status)
+for the exact flow configuration. Requires `X-API-Key` in production, same
+as `POST /generate-newsletter`.
+
+```json
+{
+  "status": "delivered",
+  "timestamp": "2026-07-15T08:01:32Z",
+  "message_id": "08DA1F2B4C3E5A6D",
+  "recipient_count": 42
+}
+```
+
+`status` is `"delivered"` or `"failed"`; `message_id` and `recipient_count`
+are optional (the Outlook connector doesn't return a message id, so flows
+typically pass the flow run's own identifier instead). The response echoes
+back the stored record in the same shape `GET /integration/outlook/status`
+returns.
+
+### `GET /integration/outlook/status` — Integration
+
+Always public (no `X-API-Key` needed, same as `GET /health`). Returns the
+most recent delivery status reported by the flow above:
+
+```json
+{
+  "delivery_status": "delivered",
+  "last_delivery_time": "2026-07-15T08:01:32Z",
+  "message_id": "08DA1F2B4C3E5A6D",
+  "recipient_count": 42
+}
+```
+
+Before the first callback ever arrives (or after a fresh deploy with no
+persisted status file), this returns `{"delivery_status": "pending",
+"last_delivery_time": null, "message_id": null, "recipient_count": null}` -
+polled by the frontend every 30 seconds to show real delivery state instead
+of a hardcoded label.
+
 ## Error responses
 
 | Status | When |
 |---|---|
-| `401` | Missing/incorrect `X-API-Key` when `API_AUTH_TOKEN` is set |
+| `401` | Missing/incorrect `X-API-Key` when `APP_ENV=production` |
 | `404` | `GET /newsletter/latest`(`/html`) called before any newsletter exists |
 | `422` | Invalid request body, or an out-of-range `limit` on `GET /newsletter/history` (must be 1-100) |
 | `502` | The LangGraph pipeline crashed, or produced no content at all - see server logs |
@@ -241,7 +288,7 @@ curl -X POST http://localhost:8000/generate-newsletter \
   -H "X-API-Key: $API_AUTH_TOKEN" \
   -d '{}'
 
-# Interview demo: compact report + link to the rendered HTML
+# Compact report + link to the rendered HTML
 curl -X POST http://localhost:8000/demo/generate -H "X-API-Key: $API_AUTH_TOKEN"
 
 # View the rendered newsletter in a browser

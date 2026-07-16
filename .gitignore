@@ -235,6 +235,9 @@ newsletter_output/
 data/history/*.json
 !data/history/.gitkeep
 
+# Generated Outlook delivery status (see app/services/outlook_status_service.py)
+data/outlook_status.json
+
 # Local override configs
 .env.local
 *.local.env

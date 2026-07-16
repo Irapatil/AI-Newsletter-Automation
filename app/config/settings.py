@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     newsletter_timezone: str = "UTC"
     newsletter_sender_name: str = "AI Newsletter Automation"
     newsletter_history_dir: str = "data/history"
+    outlook_status_file: str = "data/outlook_status.json"
     max_article_age_hours: int = 48
     newsletter_max_total_articles: int = 24
     llm_cost_per_million_tokens_usd: float = 2.5

@@ -20,6 +20,18 @@ export default [
         console: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        crypto: "readonly",
+        Blob: "readonly",
+        URL: "readonly",
+        performance: "readonly",
+        HTMLDivElement: "readonly",
+        HTMLButtonElement: "readonly",
+        HTMLParagraphElement: "readonly",
+        HTMLHeadingElement: "readonly",
+        HTMLInputElement: "readonly",
+        HTMLElement: "readonly",
       },
     },
     plugins: {
@@ -33,6 +45,15 @@ export default [
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "no-unused-vars": "off",
+    },
+  },
+  {
+    files: ["*.config.{ts,js}"],
+    languageOptions: {
+      globals: {
+        __dirname: "readonly",
+        process: "readonly",
+      },
     },
   },
 ];

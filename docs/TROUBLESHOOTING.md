@@ -14,9 +14,12 @@ in `.env`. See [`ENVIRONMENT_VARIABLES.md`](ENVIRONMENT_VARIABLES.md).
 
 ## `POST /generate-newsletter` returns `401 Unauthorized`
 
-`API_AUTH_TOKEN` is set, and your request is missing (or has the wrong)
-`X-API-Key` header. Either send the correct header, or unset
-`API_AUTH_TOKEN` for local development.
+This only happens when `APP_ENV=production` (auth is skipped entirely on
+`development`/`staging`, regardless of whether `API_AUTH_TOKEN` is set - so
+a leftover token in `.env` should never cause this locally). In production,
+your request is missing (or has the wrong) `X-API-Key` header - send
+`X-API-Key: <API_AUTH_TOKEN>`, or double-check `APP_ENV` if you didn't
+intend to run as production.
 
 ## `GET /newsletter/latest` returns `404`
 

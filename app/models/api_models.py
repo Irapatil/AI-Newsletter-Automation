@@ -372,3 +372,64 @@ class ErrorResponse(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={"example": {"detail": "Invalid or missing X-API-Key header"}}
     )
+
+
+class OutlookDeliveryStatusUpdate(BaseModel):
+    """Payload Power Automate POSTs once its "Send an email (V2)" action completes.
+
+    `status="failed"` is accepted too, so a flow can report a failed send
+    (e.g. from a `Configure run after` branch) instead of only ever reporting
+    success.
+    """
+
+    status: Literal["delivered", "failed"] = Field(
+        description="Outcome of the Outlook 'Send an email (V2)' action."
+    )
+    timestamp: datetime = Field(description="UTC time the send action completed.")
+    message_id: str | None = Field(
+        default=None,
+        description="An identifier for this delivery. The Outlook 'Send an email (V2)' "
+        "action does not itself return a message id, so flows typically pass "
+        "the run identifier (e.g. `workflow().run.name`) or a generated `guid()`.",
+    )
+    recipient_count: int | None = Field(
+        default=None,
+        description="Number of recipients the email was sent to, if the flow computes it "
+        "(e.g. from a dynamic distribution list).",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "delivered",
+                "timestamp": "2026-07-15T08:01:32Z",
+                "message_id": "08DA1F2B4C3E5A6D",
+                "recipient_count": 42,
+            }
+        }
+    )
+
+
+class OutlookDeliveryStatus(BaseModel):
+    """Current Outlook delivery status, as last reported by Power Automate.
+
+    Defaults to `delivery_status="pending"` with everything else `None` until
+    the first `POST /integration/outlook/status` callback arrives - this is
+    the state the frontend shows as "Waiting for scheduled Outlook delivery."
+    """
+
+    delivery_status: Literal["pending", "delivered", "failed"] = "pending"
+    last_delivery_time: datetime | None = None
+    message_id: str | None = None
+    recipient_count: int | None = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "delivery_status": "delivered",
+                "last_delivery_time": "2026-07-15T08:01:32Z",
+                "message_id": "08DA1F2B4C3E5A6D",
+                "recipient_count": 42,
+            }
+        }
+    )

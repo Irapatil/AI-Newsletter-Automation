@@ -63,6 +63,7 @@ def _canned_final_state(*, errors: list[str] | None = None) -> dict:
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("NEWSLETTER_HISTORY_DIR", str(tmp_path))
+    monkeypatch.setenv("OUTLOOK_STATUS_FILE", str(tmp_path / "outlook_status.json"))
     monkeypatch.setattr(
         routes_module, "get_compiled_workflow", lambda: _FakeCompiledGraph(_canned_final_state())
     )
@@ -217,10 +218,11 @@ def test_demo_generate_returns_compact_payload(client: TestClient) -> None:
     assert html_response.text == "<html>test</html>"
 
 
-def test_generate_newsletter_requires_api_key_when_configured(
+def test_generate_newsletter_requires_api_key_in_production(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("NEWSLETTER_HISTORY_DIR", str(tmp_path))
+    monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("API_AUTH_TOKEN", "super-secret")
     monkeypatch.setattr(
         routes_module, "get_compiled_workflow", lambda: _FakeCompiledGraph(_canned_final_state())
@@ -230,7 +232,112 @@ def test_generate_newsletter_requires_api_key_when_configured(
         unauthorized = test_client.post("/generate-newsletter", json={})
         assert unauthorized.status_code == 401
 
+        wrong_key = test_client.post(
+            "/generate-newsletter", json={}, headers={"X-API-Key": "not-the-right-key"}
+        )
+        assert wrong_key.status_code == 401
+
         authorized = test_client.post(
             "/generate-newsletter", json={}, headers={"X-API-Key": "super-secret"}
         )
         assert authorized.status_code == 200
+
+
+def test_generate_newsletter_ignores_api_key_outside_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A leftover API_AUTH_TOKEN in .env must never 401 a dev/demo run.
+
+    Regression test: auth used to be gated on "is a token configured", so a
+    non-empty API_AUTH_TOKEN with APP_ENV=development (a very ordinary local
+    setup) 401'd every call unless the caller manually added an X-API-Key
+    header - including Swagger's "Try it out", which doesn't pre-fill it.
+    """
+    monkeypatch.setenv("NEWSLETTER_HISTORY_DIR", str(tmp_path))
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("API_AUTH_TOKEN", "super-secret")
+    monkeypatch.setattr(
+        routes_module, "get_compiled_workflow", lambda: _FakeCompiledGraph(_canned_final_state())
+    )
+
+    with TestClient(app) as test_client:
+        no_header = test_client.post("/generate-newsletter", json={})
+        assert no_header.status_code == 200
+
+        wrong_key = test_client.post(
+            "/generate-newsletter", json={}, headers={"X-API-Key": "wrong"}
+        )
+        assert wrong_key.status_code == 200
+
+
+def test_outlook_status_defaults_to_pending(client: TestClient) -> None:
+    response = client.get("/integration/outlook/status")
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "delivery_status": "pending",
+        "last_delivery_time": None,
+        "message_id": None,
+        "recipient_count": None,
+    }
+
+
+def test_outlook_status_post_updates_and_get_reflects_it(client: TestClient) -> None:
+    post_response = client.post(
+        "/integration/outlook/status",
+        json={
+            "status": "delivered",
+            "timestamp": "2026-07-15T08:01:32Z",
+            "message_id": "08DA1F2B4C3E5A6D",
+            "recipient_count": 42,
+        },
+    )
+    assert post_response.status_code == 200
+    assert post_response.json()["delivery_status"] == "delivered"
+
+    get_response = client.get("/integration/outlook/status")
+    assert get_response.status_code == 200
+    body = get_response.json()
+    assert body["delivery_status"] == "delivered"
+    assert body["message_id"] == "08DA1F2B4C3E5A6D"
+    assert body["recipient_count"] == 42
+    assert body["last_delivery_time"] == "2026-07-15T08:01:32Z"
+
+
+def test_outlook_status_post_accepts_failed_without_message_id(client: TestClient) -> None:
+    response = client.post(
+        "/integration/outlook/status",
+        json={"status": "failed", "timestamp": "2026-07-15T08:01:32Z"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["delivery_status"] == "failed"
+    assert body["message_id"] is None
+    assert body["recipient_count"] is None
+
+
+def test_outlook_status_post_requires_api_key_in_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OUTLOOK_STATUS_FILE", str(tmp_path / "outlook_status.json"))
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("API_AUTH_TOKEN", "super-secret")
+
+    with TestClient(app) as test_client:
+        unauthorized = test_client.post(
+            "/integration/outlook/status",
+            json={"status": "delivered", "timestamp": "2026-07-15T08:01:32Z"},
+        )
+        assert unauthorized.status_code == 401
+
+        authorized = test_client.post(
+            "/integration/outlook/status",
+            json={"status": "delivered", "timestamp": "2026-07-15T08:01:32Z"},
+            headers={"X-API-Key": "super-secret"},
+        )
+        assert authorized.status_code == 200
+
+    # GET stays public even in production.
+    with TestClient(app) as test_client:
+        response = test_client.get("/integration/outlook/status")
+        assert response.status_code == 200

@@ -1,6 +1,7 @@
 /**
- * Mirrors app/models/api_models.py and app/models/newsletter.py exactly.
- * Keep these in sync with the backend Pydantic schemas.
+ * Mirrors app/models/api_models.py, app/models/newsletter.py, and
+ * app/models/article.py exactly. Keep these in sync with the backend
+ * Pydantic schemas.
  */
 
 export interface RootResponse {
@@ -49,12 +50,22 @@ export interface ArticleScores {
   total: number;
 }
 
+export type NewsCategory =
+  | "global_news"
+  | "company_news"
+  | "funding"
+  | "talent"
+  | "research"
+  | "opensource"
+  | "policy"
+  | "model_releases";
+
 export interface Article {
   id: string;
   title: string;
   url: string;
   source: string;
-  category: string;
+  category: NewsCategory;
   published_at: string;
   snippet: string;
   content: string;
@@ -79,15 +90,52 @@ export interface NewsletterContentPayload {
   generated_at: string;
 }
 
+export interface AgentExecutionRecord {
+  node: string;
+  status: "success";
+  execution_time_seconds: number;
+  items_processed: number;
+}
+
+export interface TokenUsage {
+  prompt_and_completion_tokens: number;
+  is_estimated: boolean;
+}
+
+export type RunStatus = "success" | "partial_success";
+
 export interface NewsletterResponse {
   subject: string;
   summary: string;
-  html: string;
-  markdown: string;
-  json: NewsletterContentPayload;
-  timestamp: string;
+  generated_at: string;
+  execution_time_seconds: number;
+  newsletter_html: string;
+  newsletter_markdown: string;
+  newsletter_json: NewsletterContentPayload;
+  statistics: NewsletterStats;
+  sources_used: string[];
+  agent_execution: AgentExecutionRecord[];
+  provider: string;
+  status: RunStatus;
+  token_usage: TokenUsage;
+  estimated_cost_usd: number;
   errors: string[];
-  stats: NewsletterStats;
+}
+
+export interface DemoGenerateResponse {
+  subject: string;
+  generated_at: string;
+  execution_time_seconds: number;
+  provider: string;
+  status: RunStatus;
+  statistics: NewsletterStats;
+  sources_used: string[];
+  agent_execution: AgentExecutionRecord[];
+  token_usage: TokenUsage;
+  estimated_cost_usd: number;
+  newsletter_markdown: string;
+  html_preview_url: string;
+  errors: string[];
 }
 
 export interface NewsletterHistoryItem {
@@ -105,6 +153,15 @@ export interface ErrorResponse {
   detail: string;
 }
 
+export type OutlookDeliveryState = "pending" | "delivered" | "failed";
+
+export interface OutlookDeliveryStatus {
+  delivery_status: OutlookDeliveryState;
+  last_delivery_time: string | null;
+  message_id: string | null;
+  recipient_count: number | null;
+}
+
 export const SECTION_TITLES: Record<string, string> = {
   global_news: "🌍 Global AI News",
   company_news: "🏢 Company Moves",
@@ -116,20 +173,33 @@ export const SECTION_TITLES: Record<string, string> = {
   policy: "⚖ Policy & Regulation",
 };
 
+export const SECTION_ORDER: string[] = [
+  "global_news",
+  "company_news",
+  "model_releases",
+  "funding",
+  "talent",
+  "research",
+  "opensource",
+  "policy",
+];
+
+/** Expected LangGraph node execution order for the happy path (see app/graph/workflow.py). */
 export const LANGGRAPH_NODES = [
-  { key: "global_news", label: "Global News Agent" },
-  { key: "company_news", label: "Company Agent" },
-  { key: "funding", label: "Funding Agent" },
-  { key: "research", label: "Research Agent" },
-  { key: "talent", label: "Talent Agent" },
-  { key: "policy", label: "Policy Agent" },
-  { key: "opensource", label: "Open Source Agent" },
-  { key: "model_releases", label: "Model Release Agent" },
-  { key: "aggregator", label: "Aggregator" },
-  { key: "deduplication", label: "Deduplication" },
-  { key: "ranking", label: "Ranking" },
-  { key: "newsletter_generator", label: "Newsletter Generator" },
-  { key: "html_formatter", label: "HTML Formatter" },
+  { key: "Orchestrator", label: "Orchestrator" },
+  { key: "GlobalNewsAgent", label: "Global News Agent" },
+  { key: "CompanyNewsAgent", label: "Company News Agent" },
+  { key: "ResearchAgent", label: "Research Agent" },
+  { key: "FundingAgent", label: "Funding Agent" },
+  { key: "TalentAgent", label: "Talent Agent" },
+  { key: "PolicyAgent", label: "Policy Agent" },
+  { key: "OpenSourceAgent", label: "Open Source Agent" },
+  { key: "ModelReleaseAgent", label: "Model Release Agent" },
+  { key: "AggregatorAgent", label: "Aggregator" },
+  { key: "DeduplicationAgent", label: "Deduplication" },
+  { key: "RankingAgent", label: "Ranking" },
+  { key: "NewsletterGeneratorAgent", label: "Newsletter Generator" },
+  { key: "HTMLFormatterAgent", label: "HTML Formatter" },
 ] as const;
 
 export type LangGraphNodeKey = (typeof LANGGRAPH_NODES)[number]["key"];
